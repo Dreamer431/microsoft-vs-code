@@ -20,6 +20,8 @@
 
 <br/>
 
+![Gameplay Demo](./Gameplay.gif)
+
 **[📖 Documentation](#game-mechanics)** • **[🎯 Features](#features)** • **[💻 Development](#development)**
 
 ---

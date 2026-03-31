@@ -44,6 +44,7 @@ Transform your coding workflow into an epic arcade shooter! Deploy your project 
   - 🌿 **Git** - Track your commit history through waves
   - 🐛 **Debug** - Monitor performance metrics and combos
   - 🧩 **Extensions** - Check your installed power-ups
+  - ⚙️ **Settings** - Tune movement sensitivity from the in-game sidebar
 
 ### ⚔️ **Intense Gameplay**
 - **9 Unique Enemy Types**: From basic bugs 🪲 to merge conflicts ⚠️ to the terrifying MONOLITH boss
@@ -64,7 +65,13 @@ Transform your coding workflow into an epic arcade shooter! Deploy your project 
   - Floating damage numbers
   - Hit flash feedback
   - Animated combo meter
+- **Readable Combat HUD**:
+  - Compact player HP display integrated into the canvas HUD
+  - Boss tracking and status feedback that match the VS Code aesthetic
 - **Dynamic Audio Feedback**: Terminal logs show real-time game events
+- **Frame-Rate Independent Movement**:
+  - Player, enemies, projectiles, and timers now scale with real frame time
+  - Gameplay pacing is more consistent across slower and faster machines
 
 ---
 
@@ -77,6 +84,11 @@ SPACE      → Shoot TypeScript bullets
 SHIFT / R  → Refactor Ultimate (when charged)
 ESC        → Pause game
 ```
+
+### Accessibility / Tuning
+- Open the **Settings** sidebar from the gear icon in the activity bar
+- Adjust **Movement Sensitivity** from `0.5x` to `2.0x`
+- Slider focus is automatically released after dragging so keyboard control returns to gameplay
 
 ### Objective
 Survive increasingly difficult waves of coding errors and deploy your project! Each wave requires you to:
@@ -117,8 +129,8 @@ Survive increasingly difficult waves of coding errors and deploy your project! E
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/microsoft-vs-code-game.git
-cd microsoft-vs-code-game
+git clone https://github.com/Dreamer431/microsoft-vs-code.git
+cd microsoft-vs-code
 
 # Install dependencies
 npm install
@@ -149,7 +161,7 @@ npm run deploy
 ### Project Structure
 
 ```
-microsoft-vs-code-game/
+microsoft-vs-code/
 ├── components/
 │   └── GameEngine.tsx      # Core game logic, physics, rendering
 ├── App.tsx                 # VS Code UI shell, sidebars, overlays
@@ -172,18 +184,20 @@ microsoft-vs-code-game/
 
 #### `GameEngine.tsx`
 Contains all game logic:
-- Game loop (60 FPS)
+- Time-scaled game loop for frame-rate independent gameplay
 - Entity management (players, enemies, projectiles, particles)
 - Collision detection
 - Enemy AI behaviors
 - Power-up spawning
 - Boss mechanics
 - Canvas rendering
+- Compact in-canvas HUD rendering
 
 #### `App.tsx`
 Handles the VS Code interface:
 - Activity bar navigation
 - Dynamic sidebar views
+- In-game settings and sensitivity controls
 - Terminal log display
 - Start/game-over screens
 - Stats tracking and display
@@ -248,6 +262,8 @@ case 'CUSTOM_POWERUP':
 
 ## 🐛 Known Issues
 
+- [ ] Overall feel still needs more UX polish and balance tuning
+- [ ] Some UI interactions are functional but could feel smoother
 - [ ] Hitboxes may need fine-tuning for pixel-perfect collision
 - [ ] Performance drops on some machines with 200+ entities
 - [ ] Mobile touch controls not yet implemented

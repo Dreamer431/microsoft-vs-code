@@ -47,11 +47,17 @@ const GitIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor"
 const BugIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const ExtensionsIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>;
 
-const SettingsIcon = () => (
+const SettingsIcon = ({ active, onClick }: { active: boolean; onClick: () => void }) => (
     <div className="relative group w-full flex justify-center mt-auto mb-4">
-        <svg className="w-7 h-7 text-gray-400 hover:text-white cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        <div 
+            className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+            onClick={onClick}
+        >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+        </div>
+        {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-white"></div>}
         <div className="absolute left-12 top-1 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 border border-[#454545] shadow-lg">
-            Manage
+            Settings
         </div>
     </div>
 );
@@ -59,6 +65,8 @@ const SettingsIcon = () => (
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
   const [sidebarView, setSidebarView] = useState<SidebarView>('EXPLORER');
+  const [movementSensitivity, setMovementSensitivity] = useState(1);
+  const [restartToken, setRestartToken] = useState(0);
   const [stats, setStats] = useState<GameStats>({ 
       score: 0, bugsFixed: 0, linesOfCode: 0, wave: 1, fps: 60, lastLog: '', levelProgress: 0, levelTarget: 10, bossActive: false, combo: 0, comboTimer: 0, maxCombo: 0,
       weaponLevel: 1, ammo: MAX_AMMO, maxAmmo: MAX_AMMO, specialCharge: 0, shieldActive: false
@@ -80,6 +88,12 @@ export default function App() {
   }, [terminalLogs]);
 
   const formatNumber = (num: number) => num.toLocaleString();
+  const formatSensitivity = (value: number) => `${value.toFixed(2)}x`;
+  const startFreshRun = () => {
+    setRestartToken(prev => prev + 1);
+    setGameState(GameState.PLAYING);
+    setTerminalLogs(['> npm run dev', '> Build started...', '> Compiling TypeScript...', '> Ready on http://localhost:3000']);
+  };
 
   // --- Sidebar Renderers ---
 
@@ -234,6 +248,42 @@ export default function App() {
       </div>
   );
 
+  const renderSettings = () => (
+      <div className="px-4 py-2">
+          <div className="text-xs font-bold uppercase text-gray-500 mb-4">PLAYER SETTINGS</div>
+          <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                  <span className="text-white font-bold">Movement Sensitivity</span>
+                  <span className="text-[#4ec9b0] font-mono">{formatSensitivity(movementSensitivity)}</span>
+              </div>
+              <input
+                  type="range"
+                  min="0.5"
+                  max="2"
+                  step="0.05"
+                  value={movementSensitivity}
+                  onChange={(e) => setMovementSensitivity(Number(e.target.value))}
+                  onKeyDown={(e) => {
+                      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) {
+                          e.preventDefault();
+                      }
+                  }}
+                  onMouseUp={(e) => e.currentTarget.blur()}
+                  onTouchEnd={(e) => e.currentTarget.blur()}
+                  className="w-full accent-[#007acc] cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                  <span>Slow 0.50x</span>
+                  <span>Default 1.00x</span>
+                  <span>Fast 2.00x</span>
+              </div>
+              <div className="text-xs text-gray-400 leading-relaxed">
+                  Adjusts arrow-key and WASD movement speed in real time while keeping the default 1.00x movement profile.
+              </div>
+          </div>
+      </div>
+  );
+
   return (
     <div className="flex h-screen w-screen text-[#cccccc] overflow-hidden select-none font-['Fira_Code']">
       {/* Activity Bar (Left) */}
@@ -254,7 +304,7 @@ export default function App() {
         <SidebarIcon active={sidebarView === 'EXTENSIONS'} onClick={() => setSidebarView('EXTENSIONS')} title="Extensions (Ctrl+Shift+X)">
             <ExtensionsIcon />
         </SidebarIcon>
-        <SettingsIcon />
+        <SettingsIcon active={sidebarView === 'SETTINGS'} onClick={() => setSidebarView('SETTINGS')} />
       </div>
 
       {/* Sidebar */}
@@ -269,6 +319,7 @@ export default function App() {
             {sidebarView === 'GIT' && renderGit()}
             {sidebarView === 'DEBUG' && renderDebug()}
             {sidebarView === 'EXTENSIONS' && renderExtensions()}
+            {sidebarView === 'SETTINGS' && renderSettings()}
         </div>
       </div>
 
@@ -291,7 +342,7 @@ export default function App() {
 
         {/* Game Canvas Container */}
         <div className="flex-1 relative flex justify-center items-center bg-[#1e1e1e] overflow-hidden min-h-0">
-            <GameEngine gameState={gameState} setGameState={setGameState} onStatsUpdate={setStats} />
+            <GameEngine gameState={gameState} setGameState={setGameState} onStatsUpdate={setStats} movementSensitivity={movementSensitivity} restartToken={restartToken} />
             
             {/* Start Screen Overlay */}
             {gameState === GameState.START && (
@@ -306,6 +357,7 @@ export default function App() {
                     <div className="text-right border-r border-gray-600 pr-8">
                         <h3 className="font-bold text-white mb-2 text-lg">CONTROLS</h3>
                         <p className="mb-1"><span className="text-[#569cd6]">WASD</span> : Move</p>
+                        <p className="mb-1"><span className="text-[#4ec9b0]">Sensitivity</span> : {formatSensitivity(movementSensitivity)}</p>
                         <p className="mb-1"><span className="text-[#569cd6]">SPACE</span> : Shoot</p>
                         <p className="mb-1"><span className="text-[#4ec9b0]">SHIFT / R</span> : Refactor (Ult)</p>
                         <p className="mb-1"><span className="text-gray-500">ESC</span> : Pause</p>
@@ -319,10 +371,7 @@ export default function App() {
                  </div>
 
                  <button 
-                   onClick={() => {
-                       setGameState(GameState.PLAYING);
-                       setTerminalLogs(['> npm run dev', '> Build started...', '> Compiling TypeScript...', '> Ready on http://localhost:3000']);
-                   }}
+                   onClick={startFreshRun}
                    className="px-8 py-3 bg-[#0e639c] hover:bg-[#1177bb] text-white font-semibold rounded-sm shadow-lg transition-colors"
                  >
                    F5 Start Debugging
@@ -357,7 +406,7 @@ export default function App() {
                  </div>
 
                  <button 
-                   onClick={() => setGameState(GameState.PLAYING)}
+                   onClick={startFreshRun}
                    className="px-6 py-3 bg-[#28a745] hover:bg-[#2fb950] text-white font-semibold rounded-sm shadow-lg"
                  >
                    Rebuild & Restart
@@ -396,6 +445,7 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <span className="hover:bg-white/20 px-1 rounded">Ln {stats.linesOfCode}, Col {stats.bugsFixed}</span>
+          <span className="hover:bg-white/20 px-1 rounded">Move {formatSensitivity(movementSensitivity)}</span>
           <span className="hover:bg-white/20 px-1 rounded">Heap: {Math.floor(100)}MB</span>
           <span className="hover:bg-white/20 px-1 rounded">UTF-8</span>
           <span className="hover:bg-white/20 px-1 rounded">{stats.fps} FPS</span>

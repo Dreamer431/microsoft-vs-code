@@ -109,4 +109,4 @@ export interface GameStats {
   shieldActive: boolean;
 }
 
-export type SidebarView = 'EXPLORER' | 'SEARCH' | 'GIT' | 'DEBUG' | 'EXTENSIONS';
+export type SidebarView = 'EXPLORER' | 'SEARCH' | 'GIT' | 'DEBUG' | 'EXTENSIONS' | 'SETTINGS';

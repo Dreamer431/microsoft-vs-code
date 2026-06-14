@@ -3,7 +3,8 @@ export enum GameState {
   START,
   PLAYING,
   GAME_OVER,
-  PAUSED
+  PAUSED,
+  UPGRADE
 }
 
 export interface Entity {
@@ -71,7 +72,7 @@ export interface Particle extends Entity {
   char: string;
 }
 
-export type PowerUpType = 'COFFEE' | 'COPILOT' | 'DOCKER';
+export type PowerUpType = 'COFFEE' | 'COPILOT' | 'DOCKER' | 'HOTFIX';
 
 export interface PowerUp extends Entity {
   type: PowerUpType;
@@ -86,6 +87,13 @@ export interface FloatingText {
   color: string;
   life: number;
   vy: number;
+}
+
+export interface UpgradeOption {
+  id: string;
+  title: string;
+  desc: string;
+  icon: string;
 }
 
 export interface GameStats {
@@ -107,6 +115,8 @@ export interface GameStats {
   maxAmmo: number;
   specialCharge: number;
   shieldActive: boolean;
+  // Wave upgrade
+  pendingUpgrades: UpgradeOption[];
 }
 
 export type SidebarView = 'EXPLORER' | 'SEARCH' | 'GIT' | 'DEBUG' | 'EXTENSIONS' | 'SETTINGS';

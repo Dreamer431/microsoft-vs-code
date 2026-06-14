@@ -45,6 +45,15 @@ export const POWER_UPS = [
   { type: 'COFFEE', icon: '☕', color: '#d2691e', chance: 0.05 },
   { type: 'COPILOT', icon: '🤖', color: '#ffffff', chance: 0.03 },
   { type: 'DOCKER', icon: '🐳', color: '#0db7ed', chance: 0.02 },
+  { type: 'HOTFIX', icon: '🩹', color: '#81b88b', chance: 0.04 },
+] as const;
+
+export const UPGRADE_OPTIONS = [
+  { id: 'WEAPON',    title: 'Compiler Upgrade',   desc: 'TypeScript compiler +1 level. More projectiles.',         icon: '⚡' },
+  { id: 'MAX_HP',    title: 'Heap Expansion',      desc: 'Max HP +25 and fully restore current HP.',                icon: '❤️' },
+  { id: 'MAX_AMMO',  title: 'Buffer Overflow',     desc: 'Magazine size +10. More shots before GC pause.',          icon: '📦' },
+  { id: 'RELOAD',    title: 'Fast GC',             desc: 'Garbage collection 30% faster. Shorter reload time.',     icon: '⚙️' },
+  { id: 'OVERCLOCK', title: 'Overclock CPU',       desc: 'Permanent fire rate boost (100ms → 80ms).',              icon: '🔥' },
 ] as const;
 
 export const PLAYER_SPEED = 5;

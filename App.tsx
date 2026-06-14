@@ -1,8 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import GameEngine from './components/GameEngine';
-import { GameState, GameStats, SidebarView } from './types';
-import { ENEMY_TYPES, POWER_UPS, MAX_AMMO } from './constants';
+import { GameState, GameStats, SidebarView, UpgradeOption } from './types';
+import { ENEMY_TYPES, MAX_AMMO, COMBO_TIMER_MAX } from './constants';
+import { resumeAudio, setMuted, isMuted } from './utils/audio';
+
+const HIGH_SCORE_KEY = 'VSCODE_GAME_HIGHSCORE';
 
 interface IconProps {
     active: boolean;
@@ -12,26 +15,23 @@ interface IconProps {
 
 const SidebarIcon = ({ active, onClick, children, title }: IconProps & { children: React.ReactNode }) => (
     <div className="relative group w-full flex justify-center mb-4">
-        <div 
+        <div
             className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
             onClick={onClick}
         >
             {children}
         </div>
         {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-white"></div>}
-        
-        {/* Tooltip */}
         <div className="absolute left-12 top-2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 border border-[#454545] shadow-lg transition-opacity delay-75">
             {title}
         </div>
     </div>
 );
 
-// Use user provided image, with a fallback to CDN just in case
 const VscLogo = ({ className }: { className?: string }) => (
-    <img 
-        src="./vscode.png" 
-        className={className} 
+    <img
+        src="./vscode.png"
+        className={className}
         alt="VS Code"
         style={{ objectFit: 'contain' }}
         onError={(e) => {
@@ -41,15 +41,15 @@ const VscLogo = ({ className }: { className?: string }) => (
     />
 );
 
-const FilesIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
-const SearchIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
-const GitIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>;
-const BugIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const FilesIcon      = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;
+const SearchIcon     = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
+const GitIcon        = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>;
+const BugIcon        = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const ExtensionsIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>;
 
 const SettingsIcon = ({ active, onClick }: { active: boolean; onClick: () => void }) => (
     <div className="relative group w-full flex justify-center mt-auto mb-4">
-        <div 
+        <div
             className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
             onClick={onClick}
         >
@@ -67,35 +67,79 @@ export default function App() {
   const [sidebarView, setSidebarView] = useState<SidebarView>('EXPLORER');
   const [movementSensitivity, setMovementSensitivity] = useState(1);
   const [restartToken, setRestartToken] = useState(0);
-  const [stats, setStats] = useState<GameStats>({ 
-      score: 0, bugsFixed: 0, linesOfCode: 0, wave: 1, fps: 60, lastLog: '', levelProgress: 0, levelTarget: 10, bossActive: false, combo: 0, comboTimer: 0, maxCombo: 0,
-      weaponLevel: 1, ammo: MAX_AMMO, maxAmmo: MAX_AMMO, specialCharge: 0, shieldActive: false
+  // BUG FIX #3: initial levelTarget must match GameEngine's initial value (15)
+  const [stats, setStats] = useState<GameStats>({
+      score: 0, bugsFixed: 0, linesOfCode: 0, wave: 1, fps: 60, lastLog: '', levelProgress: 0,
+      levelTarget: 15, bossActive: false, combo: 0, comboTimer: 0, maxCombo: 0,
+      weaponLevel: 1, ammo: MAX_AMMO, maxAmmo: MAX_AMMO, specialCharge: 0, shieldActive: false,
+      pendingUpgrades: []
   });
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
+  // High score
+  const [highScore, setHighScore] = useState<number>(() => Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0);
+  const [newRecord, setNewRecord] = useState(false);
+
+  // Wave upgrade: id of the option the player chose; consumed by GameEngine
+  const [pendingUpgrade, setPendingUpgrade] = useState<string | null>(null);
+
+  // Sound toggle (reads initial state from audio module)
+  const [soundMuted, setSoundMuted] = useState(false);
+
+  // Persist high score when game ends
+  useEffect(() => {
+    if (gameState === GameState.GAME_OVER) {
+      if (stats.score > highScore) {
+        setHighScore(stats.score);
+        localStorage.setItem(HIGH_SCORE_KEY, String(stats.score));
+        setNewRecord(true);
+      } else {
+        setNewRecord(false);
+      }
+    }
+  }, [gameState]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (stats.lastLog) {
         setTerminalLogs(prev => {
-            if (prev[prev.length-1] === stats.lastLog) return prev;
+            if (prev[prev.length - 1] === stats.lastLog) return prev;
             return [...prev.slice(-5), stats.lastLog];
         });
     }
   }, [stats.lastLog]);
-  
+
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [terminalLogs]);
 
   const formatNumber = (num: number) => num.toLocaleString();
   const formatSensitivity = (value: number) => `${value.toFixed(2)}x`;
+
   const startFreshRun = () => {
+    resumeAudio(); // unlock AudioContext on first user gesture
     setRestartToken(prev => prev + 1);
     setGameState(GameState.PLAYING);
     setTerminalLogs(['> npm run dev', '> Build started...', '> Compiling TypeScript...', '> Ready on http://localhost:3000']);
   };
 
-  // --- Sidebar Renderers ---
+  const handleSoundToggle = () => {
+    const next = !soundMuted;
+    setSoundMuted(next);
+    setMuted(next);
+  };
+
+  // Called by the upgrade UI; GameEngine watches pendingUpgrade and applies it
+  const handleSelectUpgrade = (id: string) => {
+    setPendingUpgrade(id);
+  };
+
+  // Called by GameEngine once it has consumed the upgrade
+  const handleUpgradeConsumed = () => {
+    setPendingUpgrade(null);
+  };
+
+  // ── Sidebar renderers ────────────────────────────────────────────────────
 
   const renderExplorer = () => (
     <>
@@ -108,19 +152,20 @@ export default function App() {
             <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#cca700] mr-2">TS</span> Enemies.ts</div>
             <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#e06c75] mr-2">JSON</span> metadata.json</div>
           </div>
-          
+
           <div className="px-4 py-2 mt-6 text-xs font-bold uppercase tracking-wider text-gray-500">Run & Debug</div>
           <div className="pl-4 mt-2 text-xs font-mono space-y-2">
              <div className="flex justify-between mb-1"><span>SCORE:</span> <span className="text-[#ce9178]">{formatNumber(stats.score)}</span></div>
              <div className="flex justify-between mb-1"><span>BUGS:</span> <span className="text-[#f14c4c]">{stats.bugsFixed}</span></div>
              <div className="flex justify-between mb-1"><span>WAVE:</span> <span className="text-[#dcdcaa]">v{stats.wave}.0</span></div>
-             
+
              {/* COMBO METER */}
              {stats.combo > 1 && (
                  <div className="mt-4 border border-[#dcdcaa] bg-[#dcdcaa]/10 p-2 rounded animate-pulse">
                     <div className="text-[#dcdcaa] font-bold text-center text-lg">{stats.combo}x COMBO</div>
                     <div className="w-full bg-[#3c3c3c] h-1 mt-1">
-                        <div className="bg-[#dcdcaa] h-full transition-all duration-75" style={{ width: `${(stats.comboTimer / 120) * 100}%` }} />
+                        {/* BUG FIX #4: use COMBO_TIMER_MAX constant instead of hardcoded 120 */}
+                        <div className="bg-[#dcdcaa] h-full transition-all duration-75" style={{ width: `${(stats.comboTimer / COMBO_TIMER_MAX) * 100}%` }} />
                     </div>
                  </div>
              )}
@@ -132,8 +177,8 @@ export default function App() {
                      <span>{stats.bossActive ? 'BLOCKED' : `${Math.round((stats.levelProgress / stats.levelTarget) * 100)}%`}</span>
                  </div>
                  <div className="w-full bg-[#3c3c3c] h-2 rounded-full overflow-hidden">
-                     <div 
-                        className={`h-full ${stats.bossActive ? 'bg-red-500 animate-pulse' : 'bg-[#4ec9b0]'}`} 
+                     <div
+                        className={`h-full ${stats.bossActive ? 'bg-red-500 animate-pulse' : 'bg-[#4ec9b0]'}`}
                         style={{ width: stats.bossActive ? '100%' : `${Math.min(100, (stats.levelProgress / stats.levelTarget) * 100)}%` }}
                      />
                  </div>
@@ -195,6 +240,7 @@ export default function App() {
               <div className="h-px bg-gray-700 my-2"></div>
               <div>Max Combo: <span className="text-[#cca700]">{stats.maxCombo}</span></div>
               <div>Lines Written: <span className="text-[#ce9178]">{stats.linesOfCode}</span></div>
+              <div>High Score: <span className="text-[#4ec9b0]">{formatNumber(highScore)}</span></div>
           </div>
       </div>
   );
@@ -203,7 +249,6 @@ export default function App() {
       <div className="px-4 py-2">
           <div className="text-xs font-bold uppercase text-gray-500 mb-4">INSTALLED EXTENSIONS</div>
           <div className="space-y-3">
-             {/* Weapon */}
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#007acc] flex items-center justify-center text-white rounded mr-3 mt-1">TS</div>
                 <div>
@@ -213,7 +258,6 @@ export default function App() {
                 </div>
              </div>
 
-             {/* Ammo */}
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#e06c75] flex items-center justify-center text-white rounded mr-3 mt-1">GC</div>
                 <div>
@@ -223,7 +267,6 @@ export default function App() {
                 </div>
              </div>
 
-             {/* Shield */}
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#0db7ed] flex items-center justify-center text-white rounded mr-3 mt-1">
                    <span className="text-lg">🐳</span>
@@ -234,8 +277,7 @@ export default function App() {
                    <div className="text-[10px] text-gray-500 mt-1">Isolates process from fatal errors.</div>
                 </div>
              </div>
-             
-             {/* Refactor */}
+
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#C586C0] flex items-center justify-center text-white rounded mr-3 mt-1">R</div>
                 <div>
@@ -249,8 +291,10 @@ export default function App() {
   );
 
   const renderSettings = () => (
-      <div className="px-4 py-2">
+      <div className="px-4 py-2 space-y-4">
           <div className="text-xs font-bold uppercase text-gray-500 mb-4">PLAYER SETTINGS</div>
+
+          {/* Movement sensitivity */}
           <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3 space-y-3">
               <div className="flex items-center justify-between text-sm">
                   <span className="text-white font-bold">Movement Sensitivity</span>
@@ -279,6 +323,26 @@ export default function App() {
               </div>
               <div className="text-xs text-gray-400 leading-relaxed">
                   Adjusts arrow-key and WASD movement speed in real time while keeping the default 1.00x movement profile.
+              </div>
+          </div>
+
+          {/* Sound toggle */}
+          <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3">
+              <div className="flex items-center justify-between text-sm">
+                  <span className="text-white font-bold">Sound Effects</span>
+                  <button
+                      onClick={handleSoundToggle}
+                      className={`px-3 py-1 rounded text-xs font-mono font-bold transition-colors ${
+                        soundMuted
+                          ? 'bg-[#3c3c3c] text-gray-400 hover:bg-[#555] hover:text-white'
+                          : 'bg-[#007acc] text-white hover:bg-[#1177bb]'
+                      }`}
+                  >
+                      {soundMuted ? '🔇 MUTED' : '🔊 ON'}
+                  </button>
+              </div>
+              <div className="text-xs text-gray-400 mt-2 leading-relaxed">
+                  WebAudio synthesised SFX. Toggle to silence all in-game sounds.
               </div>
           </div>
       </div>
@@ -314,12 +378,12 @@ export default function App() {
             <span className="text-lg leading-3 cursor-pointer hover:text-white">...</span>
         </div>
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#424242]">
-            {sidebarView === 'EXPLORER' && renderExplorer()}
-            {sidebarView === 'SEARCH' && renderSearch()}
-            {sidebarView === 'GIT' && renderGit()}
-            {sidebarView === 'DEBUG' && renderDebug()}
+            {sidebarView === 'EXPLORER'   && renderExplorer()}
+            {sidebarView === 'SEARCH'     && renderSearch()}
+            {sidebarView === 'GIT'        && renderGit()}
+            {sidebarView === 'DEBUG'      && renderDebug()}
             {sidebarView === 'EXTENSIONS' && renderExtensions()}
-            {sidebarView === 'SETTINGS' && renderSettings()}
+            {sidebarView === 'SETTINGS'   && renderSettings()}
         </div>
       </div>
 
@@ -342,8 +406,16 @@ export default function App() {
 
         {/* Game Canvas Container */}
         <div className="flex-1 relative flex justify-center items-center bg-[#1e1e1e] overflow-hidden min-h-0">
-            <GameEngine gameState={gameState} setGameState={setGameState} onStatsUpdate={setStats} movementSensitivity={movementSensitivity} restartToken={restartToken} />
-            
+            <GameEngine
+              gameState={gameState}
+              setGameState={setGameState}
+              onStatsUpdate={setStats}
+              pendingUpgrade={pendingUpgrade}
+              onUpgradeConsumed={handleUpgradeConsumed}
+              movementSensitivity={movementSensitivity}
+              restartToken={restartToken}
+            />
+
             {/* Start Screen Overlay */}
             {gameState === GameState.START && (
               <div className="absolute inset-0 bg-[#1e1e1e]/95 flex flex-col items-center justify-center z-50">
@@ -351,8 +423,16 @@ export default function App() {
                     <VscLogo className="w-24 h-24" />
                  </div>
                  <h1 className="text-4xl font-bold text-[#007acc] mb-2 tracking-tight font-sans">VS CODE: THE GAME</h1>
-                 <p className="text-[#ce9178] mb-8 font-mono text-sm">Version 3.2.0 (Insiders Edition)</p>
-                 
+                 <p className="text-[#ce9178] mb-2 font-mono text-sm">Version 3.2.0 (Insiders Edition)</p>
+
+                 {/* High score display */}
+                 {highScore > 0 && (
+                   <div className="mb-6 font-mono text-sm text-center">
+                     <span className="text-gray-500">BEST: </span>
+                     <span className="text-[#4ec9b0] font-bold">{formatNumber(highScore)}</span>
+                   </div>
+                 )}
+
                  <div className="grid grid-cols-2 gap-12 mb-8 text-sm text-gray-400 max-w-2xl">
                     <div className="text-right border-r border-gray-600 pr-8">
                         <h3 className="font-bold text-white mb-2 text-lg">CONTROLS</h3>
@@ -367,10 +447,12 @@ export default function App() {
                         <p className="mb-1">🧩 <span className="text-[#dcdcaa]">Extensions</span>: View stats in sidebar</p>
                         <p className="mb-1">🗺️ <span className="text-[#ce9178]">Minimap</span>: Tactical overview</p>
                         <p className="mb-1">⚡ <span className="text-[#007acc]">Combos</span>: Chain kills for score</p>
+                        <p className="mb-1">🩹 <span className="text-[#81b88b]">Hotfix</span>: Pick up to heal</p>
+                        <p className="mb-1">📦 <span className="text-[#C586C0]">Upgrades</span>: Choose after each Boss</p>
                     </div>
                  </div>
 
-                 <button 
+                 <button
                    onClick={startFreshRun}
                    className="px-8 py-3 bg-[#0e639c] hover:bg-[#1177bb] text-white font-semibold rounded-sm shadow-lg transition-colors"
                  >
@@ -386,7 +468,7 @@ export default function App() {
                  <p className="text-red-200 mb-8 font-mono text-xl">
                     <span className="text-gray-400">Exit code:</span> 1
                  </p>
-                 
+
                  <div className="bg-[#1e1e1e] p-6 rounded-md border border-red-500 font-mono text-xs mb-8 w-3/4 max-w-2xl shadow-2xl">
                     <p className="text-red-400 mb-2">Error: Uncaught Exception at Version {stats.wave}.0</p>
                     <p className="text-gray-400 pl-4">at Player.collision (GameEngine.tsx:404)</p>
@@ -395,22 +477,55 @@ export default function App() {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div className="text-right text-gray-400">Final Score:</div>
                             <div className="text-[#ce9178] font-bold">{formatNumber(stats.score)}</div>
-                            
+
+                            <div className="text-right text-gray-400">High Score:</div>
+                            <div className={`font-bold ${newRecord ? 'text-[#4ec9b0]' : 'text-gray-300'}`}>
+                              {formatNumber(highScore)}
+                              {newRecord && <span className="ml-2 text-[10px] bg-[#4ec9b0]/20 border border-[#4ec9b0] px-1 py-0.5 rounded animate-pulse">NEW RECORD!</span>}
+                            </div>
+
                             <div className="text-right text-gray-400">Max Combo:</div>
                             <div className="text-[#dcdcaa] font-bold">{stats.maxCombo}x</div>
-                            
+
                             <div className="text-right text-gray-400">Bugs Fixed:</div>
                             <div className="text-[#b5cea8] font-bold">{stats.bugsFixed}</div>
                         </div>
                     </div>
                  </div>
 
-                 <button 
+                 <button
                    onClick={startFreshRun}
                    className="px-6 py-3 bg-[#28a745] hover:bg-[#2fb950] text-white font-semibold rounded-sm shadow-lg"
                  >
                    Rebuild & Restart
                  </button>
+              </div>
+            )}
+
+            {/* Wave Upgrade Overlay */}
+            {gameState === GameState.UPGRADE && (
+              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+                 <div className="text-center mb-6">
+                   <div className="text-[#4ec9b0] text-xs font-mono mb-1 uppercase tracking-widest">v{stats.wave - 1}.0 Deployed Successfully</div>
+                   <h2 className="text-3xl font-bold text-white mb-1">CHOOSE AN UPGRADE</h2>
+                   <p className="text-gray-400 text-sm font-mono">Select one extension to install before the next wave</p>
+                 </div>
+
+                 <div className="flex gap-4 max-w-3xl w-full px-6">
+                   {stats.pendingUpgrades.map((opt: UpgradeOption) => (
+                     <button
+                       key={opt.id}
+                       onClick={() => handleSelectUpgrade(opt.id)}
+                       className="flex-1 border border-[#3c3c3c] bg-[#252526] hover:bg-[#2a2d2e] hover:border-[#007acc] rounded p-4 text-left transition-all group"
+                     >
+                       <div className="text-3xl mb-3">{opt.icon}</div>
+                       <div className="text-[#007acc] font-bold text-sm mb-1 group-hover:text-white transition-colors">{opt.title}</div>
+                       <div className="text-gray-400 text-xs leading-relaxed">{opt.desc}</div>
+                     </button>
+                   ))}
+                 </div>
+
+                 <p className="mt-6 text-gray-600 text-xs font-mono">Click a card to confirm</p>
               </div>
             )}
         </div>
@@ -441,16 +556,20 @@ export default function App() {
         <div className="flex items-center gap-4">
           <span className="flex items-center hover:bg-white/20 px-1 rounded"><span className="mr-1">⊗</span> 0</span>
           <span className="flex items-center hover:bg-white/20 px-1 rounded"><span className="mr-1">⚠</span> 0</span>
-          <span className="hover:bg-white/20 px-1 rounded flex items-center"><span className="mr-1 text-[10px]"></span> main*</span>
+          <span className="hover:bg-white/20 px-1 rounded flex items-center"><span className="mr-1 text-[10px]"></span> main*</span>
         </div>
         <div className="flex items-center gap-4">
           <span className="hover:bg-white/20 px-1 rounded">Ln {stats.linesOfCode}, Col {stats.bugsFixed}</span>
           <span className="hover:bg-white/20 px-1 rounded">Move {formatSensitivity(movementSensitivity)}</span>
-          <span className="hover:bg-white/20 px-1 rounded">Heap: {Math.floor(100)}MB</span>
+          <span className="hover:bg-white/20 px-1 rounded">Heap: 100MB</span>
           <span className="hover:bg-white/20 px-1 rounded">UTF-8</span>
           <span className="hover:bg-white/20 px-1 rounded">{stats.fps} FPS</span>
-          <span className="flex items-center hover:bg-white/20 px-1 cursor-pointer">
-             <span className="mr-1">🔔</span>
+          <span
+            className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
+            onClick={handleSoundToggle}
+            title={soundMuted ? 'Unmute' : 'Mute'}
+          >
+             <span className="mr-1">{soundMuted ? '🔇' : '🔔'}</span>
           </span>
         </div>
       </div>

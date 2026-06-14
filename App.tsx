@@ -4,6 +4,7 @@ import GameEngine from './components/GameEngine';
 import { GameState, GameStats, SidebarView, UpgradeOption } from './types';
 import { ENEMY_TYPES, MAX_AMMO, COMBO_TIMER_MAX } from './constants';
 import { resumeAudio, setMuted, isMuted } from './utils/audio';
+import { getLang, setLang, t, tUpgrade, Lang } from './utils/i18n';
 
 const HIGH_SCORE_KEY = 'VSCODE_GAME_HIGHSCORE';
 
@@ -47,7 +48,7 @@ const GitIcon        = () => <svg className="w-7 h-7" fill="none" stroke="curren
 const BugIcon        = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const ExtensionsIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>;
 
-const SettingsIcon = ({ active, onClick }: { active: boolean; onClick: () => void }) => (
+const SettingsIcon = ({ active, onClick, title }: { active: boolean; onClick: () => void; title: string }) => (
     <div className="relative group w-full flex justify-center mt-auto mb-4">
         <div
             className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
@@ -57,7 +58,7 @@ const SettingsIcon = ({ active, onClick }: { active: boolean; onClick: () => voi
         </div>
         {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-white"></div>}
         <div className="absolute left-12 top-1 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 border border-[#454545] shadow-lg">
-            Settings
+            {title}
         </div>
     </div>
 );
@@ -84,8 +85,16 @@ export default function App() {
   // Wave upgrade: id of the option the player chose; consumed by GameEngine
   const [pendingUpgrade, setPendingUpgrade] = useState<string | null>(null);
 
-  // Sound toggle (reads initial state from audio module)
+  // Sound toggle
   const [soundMuted, setSoundMuted] = useState(false);
+
+  // Language: storing in state triggers re-render; module-level variable drives t()
+  const [lang, setLangState] = useState<Lang>(() => getLang());
+
+  const handleLangChange = (l: Lang) => {
+    setLang(l);
+    setLangState(l);
+  };
 
   // Persist high score when game ends
   useEffect(() => {
@@ -117,10 +126,10 @@ export default function App() {
   const formatSensitivity = (value: number) => `${value.toFixed(2)}x`;
 
   const startFreshRun = () => {
-    resumeAudio(); // unlock AudioContext on first user gesture
+    resumeAudio();
     setRestartToken(prev => prev + 1);
     setGameState(GameState.PLAYING);
-    setTerminalLogs(['> npm run dev', '> Build started...', '> Compiling TypeScript...', '> Ready on http://localhost:3000']);
+    setTerminalLogs([t('termLog1'), t('termLog2'), t('termLog3'), t('termLog4')]);
   };
 
   const handleSoundToggle = () => {
@@ -129,12 +138,10 @@ export default function App() {
     setMuted(next);
   };
 
-  // Called by the upgrade UI; GameEngine watches pendingUpgrade and applies it
   const handleSelectUpgrade = (id: string) => {
     setPendingUpgrade(id);
   };
 
-  // Called by GameEngine once it has consumed the upgrade
   const handleUpgradeConsumed = () => {
     setPendingUpgrade(null);
   };
@@ -153,11 +160,11 @@ export default function App() {
             <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#e06c75] mr-2">JSON</span> metadata.json</div>
           </div>
 
-          <div className="px-4 py-2 mt-6 text-xs font-bold uppercase tracking-wider text-gray-500">Run & Debug</div>
+          <div className="px-4 py-2 mt-6 text-xs font-bold uppercase tracking-wider text-gray-500">{t('runDebugLabel')}</div>
           <div className="pl-4 mt-2 text-xs font-mono space-y-2">
-             <div className="flex justify-between mb-1"><span>SCORE:</span> <span className="text-[#ce9178]">{formatNumber(stats.score)}</span></div>
-             <div className="flex justify-between mb-1"><span>BUGS:</span> <span className="text-[#f14c4c]">{stats.bugsFixed}</span></div>
-             <div className="flex justify-between mb-1"><span>WAVE:</span> <span className="text-[#dcdcaa]">v{stats.wave}.0</span></div>
+             <div className="flex justify-between mb-1"><span>{t('scoreLabel')}</span> <span className="text-[#ce9178]">{formatNumber(stats.score)}</span></div>
+             <div className="flex justify-between mb-1"><span>{t('bugsLabel')}</span> <span className="text-[#f14c4c]">{stats.bugsFixed}</span></div>
+             <div className="flex justify-between mb-1"><span>{t('waveLabel')}</span> <span className="text-[#dcdcaa]">v{stats.wave}.0</span></div>
 
              {/* COMBO METER */}
              {stats.combo > 1 && (
@@ -173,8 +180,8 @@ export default function App() {
              {/* RELEASE PROGRESS BAR */}
              <div className="mt-4">
                  <div className="flex justify-between text-xs mb-1">
-                     <span>RELEASE PROGRESS</span>
-                     <span>{stats.bossActive ? 'BLOCKED' : `${Math.round((stats.levelProgress / stats.levelTarget) * 100)}%`}</span>
+                     <span>{t('releaseProgress')}</span>
+                     <span>{stats.bossActive ? t('blocked') : `${Math.round((stats.levelProgress / stats.levelTarget) * 100)}%`}</span>
                  </div>
                  <div className="w-full bg-[#3c3c3c] h-2 rounded-full overflow-hidden">
                      <div
@@ -182,7 +189,7 @@ export default function App() {
                         style={{ width: stats.bossActive ? '100%' : `${Math.min(100, (stats.levelProgress / stats.levelTarget) * 100)}%` }}
                      />
                  </div>
-                 {stats.bossActive && <div className="text-red-400 text-[10px] mt-1 font-bold">⚠ LEGACY CODEBLOCK BLOCKING DEPLOYMENT</div>}
+                 {stats.bossActive && <div className="text-red-400 text-[10px] mt-1 font-bold">{t('bossBlockMsg')}</div>}
              </div>
           </div>
       </div>
@@ -191,7 +198,7 @@ export default function App() {
 
   const renderSearch = () => (
     <div className="px-4 py-2">
-        <div className="text-xs font-bold uppercase text-gray-500 mb-4">ENEMY DATABASE</div>
+        <div className="text-xs font-bold uppercase text-gray-500 mb-4">{t('enemyDatabase')}</div>
         <div className="space-y-4 overflow-y-auto max-h-[500px] pr-2 scrollbar-thin">
             {ENEMY_TYPES.map((e) => (
                 <div key={e.type} className="border border-[#3c3c3c] p-2 rounded hover:bg-[#2a2d2e]">
@@ -200,7 +207,7 @@ export default function App() {
                         <span className="text-lg font-mono">{e.text}</span>
                     </div>
                     <div className="text-xs text-gray-400 mb-1">HP: {e.hp} | PTS: {e.score}</div>
-                    <div className="text-[10px] text-gray-500">{(e as any).desc || 'Unknown Entity'}</div>
+                    <div className="text-[10px] text-gray-500">{(e as any).desc || t('unknownEntity')}</div>
                 </div>
             ))}
         </div>
@@ -209,22 +216,22 @@ export default function App() {
 
   const renderGit = () => (
       <div className="px-4 py-2">
-          <div className="text-xs font-bold uppercase text-gray-500 mb-4">COMMIT HISTORY</div>
+          <div className="text-xs font-bold uppercase text-gray-500 mb-4">{t('commitHistory')}</div>
           <div className="space-y-2">
               <div className="flex items-center text-xs">
                   <span className="text-[#dcdcaa] mr-2">●</span>
-                  <span className="text-gray-300">Initial Commit</span>
+                  <span className="text-gray-300">{t('initialCommit')}</span>
               </div>
               {Array.from({length: stats.wave - 1}).map((_, i) => (
                   <div key={i} className="flex items-start text-xs border-l border-gray-600 ml-1 pl-3 py-2">
                       <div>
-                        <div className="text-white mb-1">v{i+1}.0 Release</div>
-                        <div className="text-gray-500">Refactored {100 + i * 50} lines</div>
+                        <div className="text-white mb-1">{t('releaseLabel', { wave: i + 1 })}</div>
+                        <div className="text-gray-500">{t('refactoredLines', { n: 100 + i * 50 })}</div>
                       </div>
                   </div>
               ))}
               <div className="flex items-start text-xs border-l border-dashed border-gray-500 ml-1 pl-3 py-2">
-                  <div className="text-[#cca700]">Currently working on v{stats.wave}.0...</div>
+                  <div className="text-[#cca700]">{t('workingOn', { wave: stats.wave })}</div>
               </div>
           </div>
       </div>
@@ -232,38 +239,38 @@ export default function App() {
 
   const renderDebug = () => (
       <div className="px-4 py-2">
-          <div className="text-xs font-bold uppercase text-gray-500 mb-4">DEBUG CONSOLE</div>
+          <div className="text-xs font-bold uppercase text-gray-500 mb-4">{t('debugConsole')}</div>
           <div className="font-mono text-xs space-y-2 text-green-400">
-              <div>Hardware Acceleration: <span className="text-white">ENABLED</span></div>
-              <div>Frame Time: <span className="text-white">{(1000/stats.fps).toFixed(2)}ms</span></div>
-              <div>Heap Usage: <span className="text-white">{Math.floor(Math.random() * 50 + 50)} MB</span></div>
+              <div>{t('hwAccel')} <span className="text-white">{t('hwEnabled')}</span></div>
+              <div>{t('frameTimeLabel')} <span className="text-white">{(1000/stats.fps).toFixed(2)}ms</span></div>
+              <div>{t('heapUsage')} <span className="text-white">{Math.floor(Math.random() * 50 + 50)} MB</span></div>
               <div className="h-px bg-gray-700 my-2"></div>
-              <div>Max Combo: <span className="text-[#cca700]">{stats.maxCombo}</span></div>
-              <div>Lines Written: <span className="text-[#ce9178]">{stats.linesOfCode}</span></div>
-              <div>High Score: <span className="text-[#4ec9b0]">{formatNumber(highScore)}</span></div>
+              <div>{t('dbgMaxCombo')} <span className="text-[#cca700]">{stats.maxCombo}</span></div>
+              <div>{t('dbgLines')} <span className="text-[#ce9178]">{stats.linesOfCode}</span></div>
+              <div>{t('dbgHighScore')} <span className="text-[#4ec9b0]">{formatNumber(highScore)}</span></div>
           </div>
       </div>
   );
 
   const renderExtensions = () => (
       <div className="px-4 py-2">
-          <div className="text-xs font-bold uppercase text-gray-500 mb-4">INSTALLED EXTENSIONS</div>
+          <div className="text-xs font-bold uppercase text-gray-500 mb-4">{t('installedExt')}</div>
           <div className="space-y-3">
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#007acc] flex items-center justify-center text-white rounded mr-3 mt-1">TS</div>
                 <div>
-                   <div className="text-sm font-bold text-white">TypeScript Compiler</div>
+                   <div className="text-sm font-bold text-white">{t('extTsTitle')}</div>
                    <div className="text-xs text-gray-400">v{stats.weaponLevel}.0.0</div>
-                   <div className="text-[10px] text-gray-500 mt-1">Provides type-safe projectile emission.</div>
+                   <div className="text-[10px] text-gray-500 mt-1">{t('extTsDesc')}</div>
                 </div>
              </div>
 
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#e06c75] flex items-center justify-center text-white rounded mr-3 mt-1">GC</div>
                 <div>
-                   <div className="text-sm font-bold text-white">Garbage Collector</div>
-                   <div className="text-xs text-gray-400">Heap: {Math.round(stats.ammo)}/{stats.maxAmmo}</div>
-                   <div className="text-[10px] text-gray-500 mt-1">Auto-cleans unused memory blocks.</div>
+                   <div className="text-sm font-bold text-white">{t('extGcTitle')}</div>
+                   <div className="text-xs text-gray-400">{t('extGcHeap')} {Math.round(stats.ammo)}/{stats.maxAmmo}</div>
+                   <div className="text-[10px] text-gray-500 mt-1">{t('extGcDesc')}</div>
                 </div>
              </div>
 
@@ -272,18 +279,18 @@ export default function App() {
                    <span className="text-lg">🐳</span>
                 </div>
                 <div>
-                   <div className="text-sm font-bold text-white">Docker Container</div>
-                   <div className="text-xs text-gray-400">{stats.shieldActive ? 'Running' : 'Stopped'}</div>
-                   <div className="text-[10px] text-gray-500 mt-1">Isolates process from fatal errors.</div>
+                   <div className="text-sm font-bold text-white">{t('extDockerTitle')}</div>
+                   <div className="text-xs text-gray-400">{stats.shieldActive ? t('extDockerRunning') : t('extDockerStopped')}</div>
+                   <div className="text-[10px] text-gray-500 mt-1">{t('extDockerDesc')}</div>
                 </div>
              </div>
 
              <div className="flex items-start p-2 bg-[#333] rounded hover:bg-[#3c3c3c]">
                 <div className="w-8 h-8 bg-[#C586C0] flex items-center justify-center text-white rounded mr-3 mt-1">R</div>
                 <div>
-                   <div className="text-sm font-bold text-white">Refactor CLI</div>
-                   <div className="text-xs text-gray-400">Charge: {stats.specialCharge}%</div>
-                   <div className="text-[10px] text-gray-500 mt-1">Press 'R' to optimize all code instantly.</div>
+                   <div className="text-sm font-bold text-white">{t('extRefactorTitle')}</div>
+                   <div className="text-xs text-gray-400">{t('extRefactorCharge')} {stats.specialCharge}%</div>
+                   <div className="text-[10px] text-gray-500 mt-1">{t('extRefactorDesc')}</div>
                 </div>
              </div>
           </div>
@@ -292,12 +299,12 @@ export default function App() {
 
   const renderSettings = () => (
       <div className="px-4 py-2 space-y-4">
-          <div className="text-xs font-bold uppercase text-gray-500 mb-4">PLAYER SETTINGS</div>
+          <div className="text-xs font-bold uppercase text-gray-500 mb-4">{t('playerSettings')}</div>
 
           {/* Movement sensitivity */}
           <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3 space-y-3">
               <div className="flex items-center justify-between text-sm">
-                  <span className="text-white font-bold">Movement Sensitivity</span>
+                  <span className="text-white font-bold">{t('moveSensLabel')}</span>
                   <span className="text-[#4ec9b0] font-mono">{formatSensitivity(movementSensitivity)}</span>
               </div>
               <input
@@ -317,19 +324,19 @@ export default function App() {
                   className="w-full accent-[#007acc] cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-gray-500 font-mono">
-                  <span>Slow 0.50x</span>
-                  <span>Default 1.00x</span>
-                  <span>Fast 2.00x</span>
+                  <span>{t('sensSlowLabel')}</span>
+                  <span>{t('sensDefaultLabel')}</span>
+                  <span>{t('sensFastLabel')}</span>
               </div>
               <div className="text-xs text-gray-400 leading-relaxed">
-                  Adjusts arrow-key and WASD movement speed in real time while keeping the default 1.00x movement profile.
+                  {t('sensDesc')}
               </div>
           </div>
 
           {/* Sound toggle */}
           <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3">
               <div className="flex items-center justify-between text-sm">
-                  <span className="text-white font-bold">Sound Effects</span>
+                  <span className="text-white font-bold">{t('soundLabel')}</span>
                   <button
                       onClick={handleSoundToggle}
                       className={`px-3 py-1 rounded text-xs font-mono font-bold transition-colors ${
@@ -338,11 +345,40 @@ export default function App() {
                           : 'bg-[#007acc] text-white hover:bg-[#1177bb]'
                       }`}
                   >
-                      {soundMuted ? '🔇 MUTED' : '🔊 ON'}
+                      {soundMuted ? t('soundMutedLabel') : t('soundOnLabel')}
                   </button>
               </div>
               <div className="text-xs text-gray-400 mt-2 leading-relaxed">
-                  WebAudio synthesised SFX. Toggle to silence all in-game sounds.
+                  {t('soundDesc')}
+              </div>
+          </div>
+
+          {/* Language toggle */}
+          <div className="border border-[#3c3c3c] bg-[#2a2d2e] rounded p-3">
+              <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-white font-bold">{t('languageLabel')}</span>
+              </div>
+              <div className="flex gap-2">
+                  <button
+                      onClick={() => handleLangChange('en')}
+                      className={`flex-1 px-2 py-1 rounded text-xs font-mono font-bold transition-colors ${
+                        lang === 'en'
+                          ? 'bg-[#007acc] text-white'
+                          : 'bg-[#3c3c3c] text-gray-400 hover:bg-[#555] hover:text-white'
+                      }`}
+                  >
+                      {t('langEnBtn')}
+                  </button>
+                  <button
+                      onClick={() => handleLangChange('zh')}
+                      className={`flex-1 px-2 py-1 rounded text-xs font-mono font-bold transition-colors ${
+                        lang === 'zh'
+                          ? 'bg-[#007acc] text-white'
+                          : 'bg-[#3c3c3c] text-gray-400 hover:bg-[#555] hover:text-white'
+                      }`}
+                  >
+                      {t('langZhBtn')}
+                  </button>
               </div>
           </div>
       </div>
@@ -353,22 +389,22 @@ export default function App() {
       {/* Activity Bar (Left) */}
       <div className="w-14 bg-[#333333] flex flex-col items-center py-2 border-r border-[#252526] z-10 shrink-0">
         <VscLogo className="w-10 h-10 mb-6 mt-2" />
-        <SidebarIcon active={sidebarView === 'EXPLORER'} onClick={() => setSidebarView('EXPLORER')} title="Explorer (Ctrl+Shift+E)">
+        <SidebarIcon active={sidebarView === 'EXPLORER'} onClick={() => setSidebarView('EXPLORER')} title={t('ttExplorer')}>
             <FilesIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'SEARCH'} onClick={() => setSidebarView('SEARCH')} title="Enemy Database (Ctrl+Shift+F)">
+        <SidebarIcon active={sidebarView === 'SEARCH'} onClick={() => setSidebarView('SEARCH')} title={t('ttSearch')}>
             <SearchIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'GIT'} onClick={() => setSidebarView('GIT')} title="Source Control (Ctrl+Shift+G)">
+        <SidebarIcon active={sidebarView === 'GIT'} onClick={() => setSidebarView('GIT')} title={t('ttGit')}>
             <GitIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'DEBUG'} onClick={() => setSidebarView('DEBUG')} title="Run & Debug (Ctrl+Shift+D)">
+        <SidebarIcon active={sidebarView === 'DEBUG'} onClick={() => setSidebarView('DEBUG')} title={t('ttDebug')}>
             <BugIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'EXTENSIONS'} onClick={() => setSidebarView('EXTENSIONS')} title="Extensions (Ctrl+Shift+X)">
+        <SidebarIcon active={sidebarView === 'EXTENSIONS'} onClick={() => setSidebarView('EXTENSIONS')} title={t('ttExtensions')}>
             <ExtensionsIcon />
         </SidebarIcon>
-        <SettingsIcon active={sidebarView === 'SETTINGS'} onClick={() => setSidebarView('SETTINGS')} />
+        <SettingsIcon active={sidebarView === 'SETTINGS'} onClick={() => setSidebarView('SETTINGS')} title={t('ttSettings')} />
       </div>
 
       {/* Sidebar */}
@@ -422,33 +458,45 @@ export default function App() {
                  <div className="mb-8 transform hover:scale-110 transition-transform duration-500">
                     <VscLogo className="w-24 h-24" />
                  </div>
-                 <h1 className="text-4xl font-bold text-[#007acc] mb-2 tracking-tight font-sans">VS CODE: THE GAME</h1>
-                 <p className="text-[#ce9178] mb-2 font-mono text-sm">Version 3.2.0 (Insiders Edition)</p>
+                 <h1 className="text-4xl font-bold text-[#007acc] mb-2 tracking-tight font-sans">{t('appTitle')}</h1>
+                 <p className="text-[#ce9178] mb-2 font-mono text-sm">{t('appVersion')}</p>
+
+                 {/* Language toggle on start screen */}
+                 <div className="flex gap-2 mb-4">
+                   <button
+                     onClick={() => handleLangChange('en')}
+                     className={`px-3 py-1 rounded text-xs font-mono transition-colors ${lang === 'en' ? 'bg-[#007acc] text-white' : 'bg-[#3c3c3c] text-gray-400 hover:text-white'}`}
+                   >{t('langEnBtn')}</button>
+                   <button
+                     onClick={() => handleLangChange('zh')}
+                     className={`px-3 py-1 rounded text-xs font-mono transition-colors ${lang === 'zh' ? 'bg-[#007acc] text-white' : 'bg-[#3c3c3c] text-gray-400 hover:text-white'}`}
+                   >{t('langZhBtn')}</button>
+                 </div>
 
                  {/* High score display */}
                  {highScore > 0 && (
                    <div className="mb-6 font-mono text-sm text-center">
-                     <span className="text-gray-500">BEST: </span>
+                     <span className="text-gray-500">{t('bestLabel')}: </span>
                      <span className="text-[#4ec9b0] font-bold">{formatNumber(highScore)}</span>
                    </div>
                  )}
 
                  <div className="grid grid-cols-2 gap-12 mb-8 text-sm text-gray-400 max-w-2xl">
                     <div className="text-right border-r border-gray-600 pr-8">
-                        <h3 className="font-bold text-white mb-2 text-lg">CONTROLS</h3>
-                        <p className="mb-1"><span className="text-[#569cd6]">WASD</span> : Move</p>
-                        <p className="mb-1"><span className="text-[#4ec9b0]">Sensitivity</span> : {formatSensitivity(movementSensitivity)}</p>
-                        <p className="mb-1"><span className="text-[#569cd6]">SPACE</span> : Shoot</p>
-                        <p className="mb-1"><span className="text-[#4ec9b0]">SHIFT / R</span> : Refactor (Ult)</p>
-                        <p className="mb-1"><span className="text-gray-500">ESC</span> : Pause</p>
+                        <h3 className="font-bold text-white mb-2 text-lg">{t('controlsTitle')}</h3>
+                        <p className="mb-1"><span className="text-[#569cd6]">WASD</span> : {t('ctrlMove')}</p>
+                        <p className="mb-1"><span className="text-[#4ec9b0]">{t('ctrlSens')}</span> : {formatSensitivity(movementSensitivity)}</p>
+                        <p className="mb-1"><span className="text-[#569cd6]">SPACE</span> : {t('ctrlShoot')}</p>
+                        <p className="mb-1"><span className="text-[#4ec9b0]">SHIFT / R</span> : {t('ctrlRefactor')}</p>
+                        <p className="mb-1"><span className="text-gray-500">ESC</span> : {t('ctrlPause')}</p>
                     </div>
                     <div className="pl-4">
-                        <h3 className="font-bold text-white mb-2 text-lg">NEW FEATURES</h3>
-                        <p className="mb-1">🧩 <span className="text-[#dcdcaa]">Extensions</span>: View stats in sidebar</p>
-                        <p className="mb-1">🗺️ <span className="text-[#ce9178]">Minimap</span>: Tactical overview</p>
-                        <p className="mb-1">⚡ <span className="text-[#007acc]">Combos</span>: Chain kills for score</p>
-                        <p className="mb-1">🩹 <span className="text-[#81b88b]">Hotfix</span>: Pick up to heal</p>
-                        <p className="mb-1">📦 <span className="text-[#C586C0]">Upgrades</span>: Choose after each Boss</p>
+                        <h3 className="font-bold text-white mb-2 text-lg">{t('featuresTitle')}</h3>
+                        <p className="mb-1">🧩 <span className="text-[#dcdcaa]">{t('feat1')}</span></p>
+                        <p className="mb-1">🗺️ <span className="text-[#ce9178]">{t('feat2')}</span></p>
+                        <p className="mb-1">⚡ <span className="text-[#007acc]">{t('feat3')}</span></p>
+                        <p className="mb-1">🩹 <span className="text-[#81b88b]">{t('feat4')}</span></p>
+                        <p className="mb-1">📦 <span className="text-[#C586C0]">{t('feat5')}</span></p>
                     </div>
                  </div>
 
@@ -456,7 +504,7 @@ export default function App() {
                    onClick={startFreshRun}
                    className="px-8 py-3 bg-[#0e639c] hover:bg-[#1177bb] text-white font-semibold rounded-sm shadow-lg transition-colors"
                  >
-                   F5 Start Debugging
+                   {t('startBtn')}
                  </button>
               </div>
             )}
@@ -464,30 +512,30 @@ export default function App() {
             {/* Game Over Overlay */}
             {gameState === GameState.GAME_OVER && (
               <div className="absolute inset-0 bg-[#750e0e]/95 flex flex-col items-center justify-center z-50 animate-in fade-in duration-300">
-                 <h1 className="text-6xl font-bold text-white mb-2">BUILD FAILED</h1>
+                 <h1 className="text-6xl font-bold text-white mb-2">{t('buildFailed')}</h1>
                  <p className="text-red-200 mb-8 font-mono text-xl">
-                    <span className="text-gray-400">Exit code:</span> 1
+                    <span className="text-gray-400">{t('exitCode')}</span> 1
                  </p>
 
                  <div className="bg-[#1e1e1e] p-6 rounded-md border border-red-500 font-mono text-xs mb-8 w-3/4 max-w-2xl shadow-2xl">
-                    <p className="text-red-400 mb-2">Error: Uncaught Exception at Version {stats.wave}.0</p>
+                    <p className="text-red-400 mb-2">{t('errorAt', { wave: stats.wave })}</p>
                     <p className="text-gray-400 pl-4">at Player.collision (GameEngine.tsx:404)</p>
                     <p className="text-gray-400 pl-4">at Entity.die (Entity.ts:23)</p>
                     <div className="mt-4 border-t border-gray-700 pt-4">
                         <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="text-right text-gray-400">Final Score:</div>
+                            <div className="text-right text-gray-400">{t('finalScore')}</div>
                             <div className="text-[#ce9178] font-bold">{formatNumber(stats.score)}</div>
 
-                            <div className="text-right text-gray-400">High Score:</div>
+                            <div className="text-right text-gray-400">{t('highScore')}</div>
                             <div className={`font-bold ${newRecord ? 'text-[#4ec9b0]' : 'text-gray-300'}`}>
                               {formatNumber(highScore)}
-                              {newRecord && <span className="ml-2 text-[10px] bg-[#4ec9b0]/20 border border-[#4ec9b0] px-1 py-0.5 rounded animate-pulse">NEW RECORD!</span>}
+                              {newRecord && <span className="ml-2 text-[10px] bg-[#4ec9b0]/20 border border-[#4ec9b0] px-1 py-0.5 rounded animate-pulse">{t('newRecord')}</span>}
                             </div>
 
-                            <div className="text-right text-gray-400">Max Combo:</div>
+                            <div className="text-right text-gray-400">{t('maxCombo')}</div>
                             <div className="text-[#dcdcaa] font-bold">{stats.maxCombo}x</div>
 
-                            <div className="text-right text-gray-400">Bugs Fixed:</div>
+                            <div className="text-right text-gray-400">{t('bugsFixed')}</div>
                             <div className="text-[#b5cea8] font-bold">{stats.bugsFixed}</div>
                         </div>
                     </div>
@@ -497,7 +545,7 @@ export default function App() {
                    onClick={startFreshRun}
                    className="px-6 py-3 bg-[#28a745] hover:bg-[#2fb950] text-white font-semibold rounded-sm shadow-lg"
                  >
-                   Rebuild & Restart
+                   {t('restartBtn')}
                  </button>
               </div>
             )}
@@ -506,9 +554,9 @@ export default function App() {
             {gameState === GameState.UPGRADE && (
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
                  <div className="text-center mb-6">
-                   <div className="text-[#4ec9b0] text-xs font-mono mb-1 uppercase tracking-widest">v{stats.wave - 1}.0 Deployed Successfully</div>
-                   <h2 className="text-3xl font-bold text-white mb-1">CHOOSE AN UPGRADE</h2>
-                   <p className="text-gray-400 text-sm font-mono">Select one extension to install before the next wave</p>
+                   <div className="text-[#4ec9b0] text-xs font-mono mb-1 uppercase tracking-widest">{t('waveDeployed', { wave: stats.wave - 1 })}</div>
+                   <h2 className="text-3xl font-bold text-white mb-1">{t('chooseUpgrade')}</h2>
+                   <p className="text-gray-400 text-sm font-mono">{t('upgradeSubtitle')}</p>
                  </div>
 
                  <div className="flex gap-4 max-w-3xl w-full px-6">
@@ -519,13 +567,13 @@ export default function App() {
                        className="flex-1 border border-[#3c3c3c] bg-[#252526] hover:bg-[#2a2d2e] hover:border-[#007acc] rounded p-4 text-left transition-all group"
                      >
                        <div className="text-3xl mb-3">{opt.icon}</div>
-                       <div className="text-[#007acc] font-bold text-sm mb-1 group-hover:text-white transition-colors">{opt.title}</div>
-                       <div className="text-gray-400 text-xs leading-relaxed">{opt.desc}</div>
+                       <div className="text-[#007acc] font-bold text-sm mb-1 group-hover:text-white transition-colors">{tUpgrade(opt.id, 'title')}</div>
+                       <div className="text-gray-400 text-xs leading-relaxed">{tUpgrade(opt.id, 'desc')}</div>
                      </button>
                    ))}
                  </div>
 
-                 <p className="mt-6 text-gray-600 text-xs font-mono">Click a card to confirm</p>
+                 <p className="mt-6 text-gray-600 text-xs font-mono">{t('clickToConfirm')}</p>
               </div>
             )}
         </div>
@@ -533,10 +581,10 @@ export default function App() {
         {/* Terminal / Bottom Panel */}
         <div className="h-40 bg-[#1e1e1e] border-t border-[#414141] flex flex-col shrink-0">
           <div className="flex text-xs px-4 py-2 border-b border-[#414141] bg-[#1e1e1e]">
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">Problems <span className="bg-[#252526] rounded-full px-2 py-0.5 text-[10px] ml-1">{Math.max(0, 10 - stats.bugsFixed)}</span></span>
-            <span className="mr-6 cursor-pointer hover:text-white text-[#007acc] border-b border-[#007acc] pb-2 -mb-2 uppercase text-[10px] tracking-wide">Terminal</span>
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">Debug Console</span>
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">Output</span>
+            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termProblems')} <span className="bg-[#252526] rounded-full px-2 py-0.5 text-[10px] ml-1">{Math.max(0, 10 - stats.bugsFixed)}</span></span>
+            <span className="mr-6 cursor-pointer hover:text-white text-[#007acc] border-b border-[#007acc] pb-2 -mb-2 uppercase text-[10px] tracking-wide">{t('termTerminal')}</span>
+            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termDebug')}</span>
+            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termOutput')}</span>
           </div>
           <div className="flex-1 p-2 font-mono text-xs overflow-y-auto text-gray-300 scrollbar-thin scrollbar-thumb-gray-700">
              {terminalLogs.map((log, i) => (
@@ -566,8 +614,15 @@ export default function App() {
           <span className="hover:bg-white/20 px-1 rounded">{stats.fps} FPS</span>
           <span
             className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
+            onClick={() => setSidebarView('SETTINGS')}
+            title={t('statusLang')}
+          >
+             <span>🌐 {lang.toUpperCase()}</span>
+          </span>
+          <span
+            className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
             onClick={handleSoundToggle}
-            title={soundMuted ? 'Unmute' : 'Mute'}
+            title={soundMuted ? t('statusUnmute') : t('statusMute')}
           >
              <span className="mr-1">{soundMuted ? '🔇' : '🔔'}</span>
           </span>

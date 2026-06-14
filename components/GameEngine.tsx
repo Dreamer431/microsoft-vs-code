@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyType, EnemyProjectile, UpgradeOption } from '../types';
 import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SPEED, PLAYER_BOOST_SPEED, ENEMY_TYPES, POWER_UPS, PARTICLE_CHARS, MAX_AMMO, AMMO_REGEN, RELOAD_TIME, BACKGROUND_STRINGS, SPECIAL_CHARGE_PER_KILL, COMBO_TIMER_MAX, MAX_SPECIAL_CHARGE, UPGRADE_OPTIONS } from '../constants';
 import { sfxShoot, sfxHit, sfxExplosion, sfxPowerUp, sfxHeal, sfxBossAppear, sfxUltimate, sfxPlayerHit, sfxWaveClear } from '../utils/audio';
+import { t } from '../utils/i18n';
 
 interface GameEngineProps {
   gameState: GameState;
@@ -114,7 +115,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
       linesOfCode: 0,
       wave: 1,
       fps: 60,
-      lastLog: 'System initialized.',
+      lastLog: t('logInit'),
       levelProgress: 0,
       levelTarget: 15,
       bossActive: false,
@@ -183,25 +184,25 @@ const GameEngine: React.FC<GameEngineProps> = ({
     switch (pendingUpgrade) {
       case 'WEAPON':
         player.weaponLevel = Math.min(5, player.weaponLevel + 1);
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'COMPILER UPGRADED!', COLORS.class);
+        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('compilerUpgraded'), COLORS.class);
         break;
       case 'MAX_HP':
         player.maxHp += 25;
         player.hp = player.maxHp;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'HEAP EXPANDED!', COLORS.gitAdded);
+        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('heapExpanded'), COLORS.gitAdded);
         break;
       case 'MAX_AMMO':
         player.maxAmmo += 10;
         player.ammo = player.maxAmmo;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'BUFFER OVERFLOW!', COLORS.keyword);
+        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('bufferOverflow'), COLORS.keyword);
         break;
       case 'RELOAD':
         fastGcRef.current = true;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'FAST GC ENABLED!', COLORS.function);
+        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('fastGcEnabled'), COLORS.function);
         break;
       case 'OVERCLOCK':
         overclockRef.current = true;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 'OVERCLOCKED!', COLORS.warning);
+        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('overclocked'), COLORS.warning);
         break;
     }
 
@@ -277,8 +278,8 @@ const GameEngine: React.FC<GameEngineProps> = ({
         flashTimer: 0
       });
       statsRef.current.bossActive = true;
-      statsRef.current.lastLog = `CRITICAL: Legacy Monolith detected! Expect high latency.`;
-      addFloatingText(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, "BOSS APPROACHING", COLORS.error);
+      statsRef.current.lastLog = t('logBoss');
+      addFloatingText(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, t('bossApproaching'), COLORS.error);
       shakeRef.current = 20;
       sfxBossAppear();
   };
@@ -304,7 +305,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
       if (enemy.type === 'MERGE_CONFLICT') {
           spawnEnemy('BUG', enemy.x - 20, enemy.y, 0.5);
           spawnEnemy('BUG', enemy.x + 20, enemy.y, 0.5);
-          addFloatingText(enemy.x, enemy.y, "SPLIT!", COLORS.gitModified);
+          addFloatingText(enemy.x, enemy.y, t('split'), COLORS.gitModified);
       }
 
       const comboMultiplier = 1 + (statsRef.current.combo * 0.1);
@@ -317,7 +318,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
       player.specialCharge = Math.min(MAX_SPECIAL_CHARGE, player.specialCharge + SPECIAL_CHARGE_PER_KILL);
 
       if (statsRef.current.combo > 1 && statsRef.current.combo % 5 === 0) {
-          addFloatingText(player.x, player.y - 50, `${statsRef.current.combo}x COMBO!`, COLORS.warning);
+          addFloatingText(player.x, player.y - 50, t('comboLabel', { n: statsRef.current.combo }), COLORS.warning);
       }
 
       if (enemy.type === 'MONOLITH') {
@@ -326,8 +327,8 @@ const GameEngine: React.FC<GameEngineProps> = ({
           statsRef.current.levelProgress = 0;
           statsRef.current.levelTarget += 5;
           enemyProjectilesRef.current = [];
-          statsRef.current.lastLog = `SUCCESS: v${statsRef.current.wave - 1}.0 Shipped!`;
-          addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, "DEPLOYMENT SUCCESS!", COLORS.class);
+          statsRef.current.lastLog = t('logBossKilled', { wave: statsRef.current.wave - 1 });
+          addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('deploySuccess'), COLORS.class);
           player.hp = player.maxHp;
           player.ammo = player.maxAmmo;
           shakeRef.current = 20;
@@ -364,7 +365,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
 
       playerRef.current.specialCharge = 0;
       shakeRef.current = 30;
-      statsRef.current.lastLog = "EXECUTING GLOBAL REFACTOR...";
+      statsRef.current.lastLog = t('logRefactor');
       enemyProjectilesRef.current = [];
 
       // BUG FIX #2: Snapshot to avoid modifying the array while iterating
@@ -385,7 +386,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
           color: COLORS.accent, life: 1.0, maxLife: 1.0, alpha: 0.8, char: ''
       });
 
-      addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, "REFACTOR COMPLETE", COLORS.class);
+      addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('refactorComplete'), COLORS.class);
       sfxUltimate();
   };
 
@@ -426,7 +427,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         linesOfCode: 0,
         wave: 1,
         fps: 60,
-        lastLog: 'New session started.',
+        lastLog: t('logNewSession'),
         levelProgress: 0,
         levelTarget: 15,
         bossActive: false,
@@ -510,10 +511,10 @@ const GameEngine: React.FC<GameEngineProps> = ({
           ctx.fillStyle = '#fff';
           ctx.font = 'bold 40px "Fira Code"';
           ctx.textAlign = 'center';
-          ctx.fillText("BREAKPOINT HIT", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+          ctx.fillText(t('breakpointHit'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
           ctx.font = '20px "Fira Code"';
           ctx.fillStyle = '#cccccc';
-          ctx.fillText("Press P to Continue", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
+          ctx.fillText(t('pressToContinue'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
           ctx.textAlign = 'left';
         }
         // UPGRADE state: React overlay in App.tsx handles the actual UI
@@ -570,7 +571,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         statsRef.current.comboTimer = Math.max(0, statsRef.current.comboTimer - frameScale);
         if (statsRef.current.comboTimer <= 0) {
             statsRef.current.combo = 0;
-            statsRef.current.lastLog = "Combo broken. Optimize loop.";
+            statsRef.current.lastLog = t('logComboBreak');
         }
     }
 
@@ -593,7 +594,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         if (player.reloadTimer <= 0) {
             player.isReloading = false;
             player.ammo = player.maxAmmo;
-            addFloatingText(player.x, player.y - 20, "GC COMPLETE", COLORS.class);
+            addFloatingText(player.x, player.y - 20, t('gcComplete'), COLORS.class);
         }
     } else {
         if (!keysRef.current.has('Space') && player.ammo < player.maxAmmo) {
@@ -611,8 +612,8 @@ const GameEngine: React.FC<GameEngineProps> = ({
             if (player.ammo <= 0) {
                 player.isReloading = true;
                 player.reloadTimer = reloadDuration;
-                statsRef.current.lastLog = "Warning: Heap full. Triggering Garbage Collection.";
-                addFloatingText(player.x, player.y - 40, "GC PAUSE...", COLORS.warning);
+                statsRef.current.lastLog = t('logGcPause');
+                addFloatingText(player.x, player.y - 40, t('gcPause'), COLORS.warning);
             }
 
             projectilesRef.current.push({
@@ -750,7 +751,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         if (player.shield > 0) {
              enemy.hp -= 10;
              createExplosion(enemy.x, enemy.y, '#0db7ed', 5);
-             addFloatingText(player.x, player.y - 20, "BLOCKED", '#0db7ed');
+             addFloatingText(player.x, player.y - 20, t('blocked'), '#0db7ed');
              handleEnemyDefeat(enemy);
         } else if (player.invulnerable <= 0) {
           player.hp -= 20;
@@ -759,7 +760,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
           statsRef.current.combo = 0;
           createExplosion(player.x, player.y, COLORS.error, 15);
           shakeRef.current = 15;
-          addFloatingText(player.x, player.y - 40, "EXCEPTION!", COLORS.error);
+          addFloatingText(player.x, player.y - 40, t('exception'), COLORS.error);
           sfxPlayerHit();
           if (player.hp <= 0) triggerGameOver();
         }
@@ -777,14 +778,14 @@ const GameEngine: React.FC<GameEngineProps> = ({
             player.y + player.height > p.y
         ) {
             if (player.shield > 0) {
-                addFloatingText(player.x, player.y - 20, "BLOCKED", '#0db7ed');
+                addFloatingText(player.x, player.y - 20, t('blocked'), '#0db7ed');
             } else {
                 player.hp -= p.damage;
                 player.invulnerable = 40;
                 statsRef.current.combo = 0;
                 shakeRef.current = 15;
                 createExplosion(player.x, player.y, COLORS.error, 8);
-                addFloatingText(player.x, player.y - 30, `-${p.damage}`, COLORS.error);
+                addFloatingText(player.x, player.y - 30, t('dmgLabel', { n: p.damage }), COLORS.error);
                 sfxPlayerHit();
                 if (player.hp <= 0) triggerGameOver();
             }
@@ -835,21 +836,21 @@ const GameEngine: React.FC<GameEngineProps> = ({
         ) {
             if (p.type === 'COFFEE') {
                 player.speedBuff = 600;
-                addFloatingText(player.x, player.y, "SPEED++", p.color);
+                addFloatingText(player.x, player.y, t('speedUp'), p.color);
                 sfxPowerUp();
             } else if (p.type === 'COPILOT') {
                 player.weaponLevel = Math.min(5, player.weaponLevel + 1);
-                addFloatingText(player.x, player.y, "WEAPON++", p.color);
+                addFloatingText(player.x, player.y, t('weaponUp'), p.color);
                 sfxPowerUp();
             } else if (p.type === 'DOCKER') {
                 player.shield = 300;
-                addFloatingText(player.x, player.y, "SHIELD", p.color);
+                addFloatingText(player.x, player.y, t('shield'), p.color);
                 sfxPowerUp();
             } else if (p.type === 'HOTFIX') {
                 // New heal pickup
                 const healed = Math.min(player.maxHp - player.hp, 30);
                 player.hp = Math.min(player.maxHp, player.hp + 30);
-                addFloatingText(player.x, player.y, `+${healed} HP`, p.color);
+                addFloatingText(player.x, player.y, t('hpGain', { n: healed }), p.color);
                 sfxHeal();
             }
             p.y = CANVAS_HEIGHT + 100;
@@ -946,7 +947,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.strokeRect(hpHudX, hpHudY, 148, 18);
     ctx.fillStyle = '#858585';
     ctx.font = '10px "Fira Code"';
-    ctx.fillText('HP', hpHudX + 6, hpHudY + 12);
+    ctx.fillText(t('hpLabel'), hpHudX + 6, hpHudY + 12);
     ctx.fillStyle = '#333333';
     ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth, 8);
     ctx.fillStyle = hpPct > 0.6 ? COLORS.class : hpPct > 0.3 ? COLORS.warning : COLORS.error;
@@ -1036,8 +1037,8 @@ const GameEngine: React.FC<GameEngineProps> = ({
         ctx.font = 'bold 12px "Fira Code"';
         ctx.fillText(
           isRage
-            ? `⚠ PHASE 2 ─ LEGACY MONOLITH (v${statsRef.current.wave}.0) ⚠`
-            : `LEGACY MONOLITH (v${statsRef.current.wave}.0)`,
+            ? t('bossBarPhase2', { wave: statsRef.current.wave })
+            : t('bossBar', { wave: statsRef.current.wave }),
           CANVAS_WIDTH / 2, 15
         );
         ctx.textAlign = 'left';

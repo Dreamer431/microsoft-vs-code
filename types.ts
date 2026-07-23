@@ -89,10 +89,10 @@ export interface FloatingText {
   vy: number;
 }
 
+export type UpgradeId = 'WEAPON' | 'MAX_HP' | 'MAX_AMMO' | 'RELOAD' | 'OVERCLOCK';
+
 export interface UpgradeOption {
-  id: string;
-  title: string;
-  desc: string;
+  id: UpgradeId;
   icon: string;
 }
 

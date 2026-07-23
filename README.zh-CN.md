@@ -8,7 +8,7 @@
 
 [![React](https://img.shields.io/badge/React-19.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.2.0-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8.1.5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 
@@ -99,6 +99,8 @@ SHIFT / R  → 重构大招（充能后）
 ESC / P    → 暂停游戏
 ```
 
+在触屏设备上，游戏区域底部会显示四向移动、射击和重构大招按钮；活动栏会打开可关闭的移动端侧边栏。
+
 ### 调整与设置
 - 点击活动栏底部的齿轮图标打开 **设置**
 - 可将 **移动灵敏度** 调整在 `0.5x` 到 `2.0x` 之间
@@ -139,7 +141,7 @@ ESC / P    → 暂停游戏
 ## 🚀 快速开始
 
 ### 环境要求
-- **Node.js**（v16 或更高版本）
+- **Node.js**（20.19+ 的 20.x 版本，或 22.12+）
 - **npm** 或 **yarn**
 
 ### 安装步骤
@@ -164,6 +166,9 @@ npm run dev
 # 构建优化版本
 npm run build
 
+# 运行类型检查、Lint、测试和生产构建
+npm run verify
+
 # 预览生产构建
 npm run preview
 
@@ -180,12 +185,17 @@ npm run deploy
 ```
 microsoft-vs-code/
 ├── components/
-│   └── GameEngine.tsx      # 核心游戏逻辑、物理引擎、渲染
+│   ├── GameEngine.tsx      # 核心游戏循环、实体系统、Canvas 渲染
+│   └── TouchControls.tsx   # 移动端触控键帽
 ├── utils/
-│   └── audio.ts            # WebAudio 合成音效引擎
+│   ├── audio.ts            # WebAudio 合成音效引擎
+│   ├── gameLogic.ts        # 可测试的时间、伤害、输入纯逻辑
+│   ├── gameState.ts        # 玩家与统计初始状态工厂
+│   └── i18n.ts             # 中英文翻译和语言持久化
 ├── App.tsx                 # VS Code UI 外壳、侧边栏、覆盖层
 ├── types.ts                # 游戏实体的 TypeScript 接口
 ├── constants.ts            # 游戏配置、敌人数据、升级选项
+├── index.css               # 本地 Tailwind 入口与全局可访问性样式
 ├── index.tsx               # React 入口点
 ├── index.html              # HTML 模板
 └── vscode.png              # VS Code logo 资源
@@ -195,10 +205,11 @@ microsoft-vs-code/
 
 - **React 19.2** - UI 框架
 - **TypeScript 5.8** - 类型安全
-- **Vite 6.2** - 构建工具和开发服务器
+- **Vite 8.1** - 构建工具和开发服务器
 - **HTML5 Canvas** - 游戏渲染
 - **Web Audio API** - 程序化音效
-- **CSS3 / Tailwind** - VS Code 样式
+- **CSS3 / Tailwind 3** - 本地编译的 VS Code 样式，不依赖运行时 CDN
+- **Vitest / ESLint** - 游戏纯逻辑测试和静态质量门禁
 
 ### 核心组件
 
@@ -270,14 +281,18 @@ export const SPECIAL_CHARGE_PER_KILL = 5;  // 大招充能速率
 export const UPGRADE_OPTIONS = [
   {
     id: 'MY_UPGRADE',
-    title: '自定义升级',
-    desc: '做一些很厉害的事。',
     icon: '🔥'
   }
 ]
 ```
 
-然后在 `GameEngine.tsx` 的 `pendingUpgrade` `useEffect` switch 中实现效果：
+新增敌人不只需要添加配置：还要同步扩展 `types.ts` 中的 `EnemyType`，为 `descKey` 添加中英文翻译，将类型加入 `GameEngine.tsx` 的波次生成分布，并在敌人 AI 分支实现特殊行为。最后运行 `npm run verify`。
+
+然后完成以下步骤：
+
+1. 在 `types.ts` 的 `UpgradeId` 联合类型中加入 `'MY_UPGRADE'`。
+2. 在 `utils/i18n.ts` 的中英文表中分别加入 `upg_MY_UPGRADE_title` 和 `upg_MY_UPGRADE_desc`。
+3. 在 `GameEngine.tsx` 的 `pendingUpgrade` `useEffect` switch 中实现效果：
 
 ```typescript
 case 'MY_UPGRADE':
@@ -285,13 +300,14 @@ case 'MY_UPGRADE':
   break;
 ```
 
+4. 为升级效果补测试，并运行 `npm run verify`。
+
 ---
 
 ## 🐛 已知问题
 
 - [ ] 碰撞箱可能需要微调以实现像素级完美碰撞
 - [ ] 某些机器上超过 200 个实体时性能下降
-- [ ] 移动端触控控制尚未实现
 
 ---
 

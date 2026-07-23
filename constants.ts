@@ -1,3 +1,5 @@
+import type { UpgradeOption } from './types';
+
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
 
@@ -24,21 +26,21 @@ export const COLORS = {
 
 export const ENEMY_TYPES = [
   // Basic
-  { type: 'BUG', text: '🪲', hp: 10, score: 100, speed: 1.5, color: '#f14c4c', width: 24, desc: '普通Bug，数量众多' },
-  { type: 'SYNTAX_ERROR', text: '};', hp: 20, score: 200, speed: 1.0, color: '#dcdcaa', width: 30, desc: '语法错误，比较耐打' },
-  { type: 'SPAGHETTI', text: 'goto', hp: 15, score: 150, speed: 2.0, color: '#ce9178', width: 40, desc: '面条代码，移动飘忽' },
+  { type: 'BUG', text: '🪲', hp: 10, score: 100, speed: 1.5, color: '#f14c4c', width: 24, descKey: 'enemyDescBug' },
+  { type: 'SYNTAX_ERROR', text: '};', hp: 20, score: 200, speed: 1.0, color: '#dcdcaa', width: 30, descKey: 'enemyDescSyntax' },
+  { type: 'SPAGHETTI', text: 'goto', hp: 15, score: 150, speed: 2.0, color: '#ce9178', width: 40, descKey: 'enemyDescSpaghetti' },
   
   // Advanced (New)
-  { type: 'MERGE_CONFLICT', text: '<<<<', hp: 35, score: 350, speed: 0.8, color: '#cca700', width: 45, desc: '合并冲突，死后分裂' },
-  { type: 'INFINITE_LOOP', text: 'while(1)', hp: 25, score: 400, speed: 1.2, color: '#569cd6', width: 60, desc: '死循环，螺旋攻击' },
-  { type: 'RACE_CONDITION', text: 'async', hp: 20, score: 500, speed: 3.0, color: '#C586C0', width: 40, desc: '竞态条件，随机瞬移' },
+  { type: 'MERGE_CONFLICT', text: '<<<<', hp: 35, score: 350, speed: 0.8, color: '#cca700', width: 45, descKey: 'enemyDescMerge' },
+  { type: 'INFINITE_LOOP', text: 'while(1)', hp: 25, score: 400, speed: 1.2, color: '#569cd6', width: 60, descKey: 'enemyDescLoop' },
+  { type: 'RACE_CONDITION', text: 'async', hp: 20, score: 500, speed: 3.0, color: '#C586C0', width: 40, descKey: 'enemyDescRace' },
 
   // Specials
-  { type: 'MEMORY_LEAK', text: 'malloc()', hp: 40, score: 300, speed: 0.8, color: '#B8D7A3', width: 60, desc: '内存泄漏，体积膨胀' }, 
-  { type: 'ERROR_404', text: '404', hp: 15, score: 250, speed: 2.5, color: '#808080', width: 35, desc: '资源丢失，速度极快' }, 
+  { type: 'MEMORY_LEAK', text: 'malloc()', hp: 40, score: 300, speed: 0.8, color: '#B8D7A3', width: 60, descKey: 'enemyDescMemory' },
+  { type: 'ERROR_404', text: '404', hp: 15, score: 250, speed: 2.5, color: '#808080', width: 35, descKey: 'enemyDesc404' },
   
   // Boss
-  { type: 'MONOLITH', text: 'LegacyWrapper', hp: 600, score: 5000, speed: 0.5, color: '#569cd6', width: 160, desc: '遗留代码单体，最终Boss' }, 
+  { type: 'MONOLITH', text: 'LegacyWrapper', hp: 600, score: 5000, speed: 0.5, color: '#569cd6', width: 160, descKey: 'enemyDescMonolith' },
 ] as const;
 
 export const POWER_UPS = [
@@ -49,12 +51,12 @@ export const POWER_UPS = [
 ] as const;
 
 export const UPGRADE_OPTIONS = [
-  { id: 'WEAPON',    title: 'Compiler Upgrade',   desc: 'TypeScript compiler +1 level. More projectiles.',         icon: '⚡' },
-  { id: 'MAX_HP',    title: 'Heap Expansion',      desc: 'Max HP +25 and fully restore current HP.',                icon: '❤️' },
-  { id: 'MAX_AMMO',  title: 'Buffer Overflow',     desc: 'Magazine size +10. More shots before GC pause.',          icon: '📦' },
-  { id: 'RELOAD',    title: 'Fast GC',             desc: 'Garbage collection 30% faster. Shorter reload time.',     icon: '⚙️' },
-  { id: 'OVERCLOCK', title: 'Overclock CPU',       desc: 'Permanent fire rate boost (100ms → 80ms).',              icon: '🔥' },
-] as const;
+  { id: 'WEAPON',    icon: '⚡' },
+  { id: 'MAX_HP',    icon: '❤️' },
+  { id: 'MAX_AMMO',  icon: '📦' },
+  { id: 'RELOAD',    icon: '⚙️' },
+  { id: 'OVERCLOCK', icon: '🔥' },
+] as const satisfies readonly UpgradeOption[];
 
 export const PLAYER_SPEED = 5;
 export const PLAYER_BOOST_SPEED = 9;

@@ -1,12 +1,30 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import GameEngine from './components/GameEngine';
-import { GameState, GameStats, SidebarView, UpgradeOption } from './types';
-import { ENEMY_TYPES, MAX_AMMO, COMBO_TIMER_MAX } from './constants';
+import { GameState, GameStats, SidebarView, UpgradeId, UpgradeOption } from './types';
+import { ENEMY_TYPES, COMBO_TIMER_MAX } from './constants';
 import { resumeAudio, setMuted, isMuted } from './utils/audio';
 import { getLang, setLang, t, tUpgrade, Lang } from './utils/i18n';
+import { createInitialGameStats } from './utils/gameState';
+import vscodeLogo from './vscode.png';
 
 const HIGH_SCORE_KEY = 'VSCODE_GAME_HIGHSCORE';
+
+const readHighScore = (): number => {
+  try {
+    return Number(window.localStorage.getItem(HIGH_SCORE_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+
+const writeHighScore = (score: number): void => {
+  try {
+    window.localStorage.setItem(HIGH_SCORE_KEY, String(score));
+  } catch {
+    // The current session remains playable when persistent storage is blocked.
+  }
+};
 
 interface IconProps {
     active: boolean;
@@ -16,12 +34,15 @@ interface IconProps {
 
 const SidebarIcon = ({ active, onClick, children, title }: IconProps & { children: React.ReactNode }) => (
     <div className="relative group w-full flex justify-center mb-4">
-        <div
+        <button
+            type="button"
+            aria-label={title}
+            title={title}
             className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
             onClick={onClick}
         >
             {children}
-        </div>
+        </button>
         {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-white"></div>}
         <div className="absolute left-12 top-2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 border border-[#454545] shadow-lg transition-opacity delay-75">
             {title}
@@ -31,14 +52,10 @@ const SidebarIcon = ({ active, onClick, children, title }: IconProps & { childre
 
 const VscLogo = ({ className }: { className?: string }) => (
     <img
-        src="./vscode.png"
+        src={vscodeLogo}
         className={className}
         alt="VS Code"
         style={{ objectFit: 'contain' }}
-        onError={(e) => {
-            console.warn("Local vscode.png not found, falling back to CDN");
-            e.currentTarget.src = "https://upload.wikimedia.org/wikipedia/commons/9/9a/Visual_Studio_Code_1.35_icon.svg";
-        }}
     />
 );
 
@@ -50,12 +67,15 @@ const ExtensionsIcon = () => <svg className="w-7 h-7" fill="none" stroke="curren
 
 const SettingsIcon = ({ active, onClick, title }: { active: boolean; onClick: () => void; title: string }) => (
     <div className="relative group w-full flex justify-center mt-auto mb-4">
-        <div
+        <button
+            type="button"
+            aria-label={title}
+            title={title}
             className={`cursor-pointer p-2 transition-colors ${active ? 'text-white' : 'text-gray-400 hover:text-white'}`}
             onClick={onClick}
         >
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-        </div>
+        </button>
         {active && <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-white"></div>}
         <div className="absolute left-12 top-1 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 border border-[#454545] shadow-lg">
             {title}
@@ -66,27 +86,22 @@ const SettingsIcon = ({ active, onClick, title }: { active: boolean; onClick: ()
 export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
   const [sidebarView, setSidebarView] = useState<SidebarView>('EXPLORER');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [movementSensitivity, setMovementSensitivity] = useState(1);
   const [restartToken, setRestartToken] = useState(0);
-  // BUG FIX #3: initial levelTarget must match GameEngine's initial value (15)
-  const [stats, setStats] = useState<GameStats>({
-      score: 0, bugsFixed: 0, linesOfCode: 0, wave: 1, fps: 60, lastLog: '', levelProgress: 0,
-      levelTarget: 15, bossActive: false, combo: 0, comboTimer: 0, maxCombo: 0,
-      weaponLevel: 1, ammo: MAX_AMMO, maxAmmo: MAX_AMMO, specialCharge: 0, shieldActive: false,
-      pendingUpgrades: []
-  });
+  const [stats, setStats] = useState<GameStats>(() => createInitialGameStats());
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // High score
-  const [highScore, setHighScore] = useState<number>(() => Number(localStorage.getItem(HIGH_SCORE_KEY)) || 0);
+  const [highScore, setHighScore] = useState<number>(readHighScore);
   const [newRecord, setNewRecord] = useState(false);
 
   // Wave upgrade: id of the option the player chose; consumed by GameEngine
-  const [pendingUpgrade, setPendingUpgrade] = useState<string | null>(null);
+  const [pendingUpgrade, setPendingUpgrade] = useState<UpgradeId | null>(null);
 
   // Sound toggle
-  const [soundMuted, setSoundMuted] = useState(false);
+  const [soundMuted, setSoundMuted] = useState(isMuted);
 
   // Language: storing in state triggers re-render; module-level variable drives t()
   const [lang, setLangState] = useState<Lang>(() => getLang());
@@ -99,15 +114,14 @@ export default function App() {
   // Persist high score when game ends
   useEffect(() => {
     if (gameState === GameState.GAME_OVER) {
-      if (stats.score > highScore) {
-        setHighScore(stats.score);
-        localStorage.setItem(HIGH_SCORE_KEY, String(stats.score));
-        setNewRecord(true);
-      } else {
-        setNewRecord(false);
-      }
+      setHighScore(previous => {
+        const isRecord = stats.score > previous;
+        setNewRecord(isRecord);
+        if (isRecord) writeHighScore(stats.score);
+        return isRecord ? stats.score : previous;
+      });
     }
-  }, [gameState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameState, stats.score]);
 
   useEffect(() => {
     if (stats.lastLog) {
@@ -127,6 +141,7 @@ export default function App() {
 
   const startFreshRun = () => {
     resumeAudio();
+    setMobileSidebarOpen(false);
     setRestartToken(prev => prev + 1);
     setGameState(GameState.PLAYING);
     setTerminalLogs([t('termLog1'), t('termLog2'), t('termLog3'), t('termLog4')]);
@@ -138,12 +153,17 @@ export default function App() {
     setMuted(next);
   };
 
-  const handleSelectUpgrade = (id: string) => {
+  const handleSelectUpgrade = (id: UpgradeId) => {
     setPendingUpgrade(id);
   };
 
   const handleUpgradeConsumed = () => {
     setPendingUpgrade(null);
+  };
+
+  const handleSidebarSelect = (view: SidebarView) => {
+    setMobileSidebarOpen(previous => sidebarView === view ? !previous : true);
+    setSidebarView(view);
   };
 
   // ── Sidebar renderers ────────────────────────────────────────────────────
@@ -207,7 +227,7 @@ export default function App() {
                         <span className="text-lg font-mono">{e.text}</span>
                     </div>
                     <div className="text-xs text-gray-400 mb-1">HP: {e.hp} | PTS: {e.score}</div>
-                    <div className="text-[10px] text-gray-500">{(e as any).desc || t('unknownEntity')}</div>
+                    <div className="text-[10px] text-gray-500">{t(e.descKey)}</div>
                 </div>
             ))}
         </div>
@@ -243,7 +263,7 @@ export default function App() {
           <div className="font-mono text-xs space-y-2 text-green-400">
               <div>{t('hwAccel')} <span className="text-white">{t('hwEnabled')}</span></div>
               <div>{t('frameTimeLabel')} <span className="text-white">{(1000/stats.fps).toFixed(2)}ms</span></div>
-              <div>{t('heapUsage')} <span className="text-white">{Math.floor(Math.random() * 50 + 50)} MB</span></div>
+              <div>{t('heapUsage')} <span className="text-white">{Math.min(99, 50 + stats.wave * 3 + stats.bugsFixed % 20)} MB</span></div>
               <div className="h-px bg-gray-700 my-2"></div>
               <div>{t('dbgMaxCombo')} <span className="text-[#cca700]">{stats.maxCombo}</span></div>
               <div>{t('dbgLines')} <span className="text-[#ce9178]">{stats.linesOfCode}</span></div>
@@ -384,27 +404,38 @@ export default function App() {
       </div>
   );
 
+  const renderSidebarContent = () => (
+    <>
+      {sidebarView === 'EXPLORER'   && renderExplorer()}
+      {sidebarView === 'SEARCH'     && renderSearch()}
+      {sidebarView === 'GIT'        && renderGit()}
+      {sidebarView === 'DEBUG'      && renderDebug()}
+      {sidebarView === 'EXTENSIONS' && renderExtensions()}
+      {sidebarView === 'SETTINGS'   && renderSettings()}
+    </>
+  );
+
   return (
-    <div className="flex h-screen w-screen text-[#cccccc] overflow-hidden select-none font-['Fira_Code']">
+    <div className="relative flex h-screen w-screen select-none overflow-hidden font-mono text-[#cccccc]">
       {/* Activity Bar (Left) */}
-      <div className="w-14 bg-[#333333] flex flex-col items-center py-2 border-r border-[#252526] z-10 shrink-0">
-        <VscLogo className="w-10 h-10 mb-6 mt-2" />
-        <SidebarIcon active={sidebarView === 'EXPLORER'} onClick={() => setSidebarView('EXPLORER')} title={t('ttExplorer')}>
+      <div className="z-[80] flex w-12 shrink-0 flex-col items-center border-r border-[#252526] bg-[#333333] py-2 md:z-10 md:w-14">
+        <VscLogo className="mb-6 mt-2 h-9 w-9 md:h-10 md:w-10" />
+        <SidebarIcon active={sidebarView === 'EXPLORER'} onClick={() => handleSidebarSelect('EXPLORER')} title={t('ttExplorer')}>
             <FilesIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'SEARCH'} onClick={() => setSidebarView('SEARCH')} title={t('ttSearch')}>
+        <SidebarIcon active={sidebarView === 'SEARCH'} onClick={() => handleSidebarSelect('SEARCH')} title={t('ttSearch')}>
             <SearchIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'GIT'} onClick={() => setSidebarView('GIT')} title={t('ttGit')}>
+        <SidebarIcon active={sidebarView === 'GIT'} onClick={() => handleSidebarSelect('GIT')} title={t('ttGit')}>
             <GitIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'DEBUG'} onClick={() => setSidebarView('DEBUG')} title={t('ttDebug')}>
+        <SidebarIcon active={sidebarView === 'DEBUG'} onClick={() => handleSidebarSelect('DEBUG')} title={t('ttDebug')}>
             <BugIcon />
         </SidebarIcon>
-        <SidebarIcon active={sidebarView === 'EXTENSIONS'} onClick={() => setSidebarView('EXTENSIONS')} title={t('ttExtensions')}>
+        <SidebarIcon active={sidebarView === 'EXTENSIONS'} onClick={() => handleSidebarSelect('EXTENSIONS')} title={t('ttExtensions')}>
             <ExtensionsIcon />
         </SidebarIcon>
-        <SettingsIcon active={sidebarView === 'SETTINGS'} onClick={() => setSidebarView('SETTINGS')} title={t('ttSettings')} />
+        <SettingsIcon active={sidebarView === 'SETTINGS'} onClick={() => handleSidebarSelect('SETTINGS')} title={t('ttSettings')} />
       </div>
 
       {/* Sidebar */}
@@ -414,14 +445,37 @@ export default function App() {
             <span className="text-lg leading-3 cursor-pointer hover:text-white">...</span>
         </div>
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#424242]">
-            {sidebarView === 'EXPLORER'   && renderExplorer()}
-            {sidebarView === 'SEARCH'     && renderSearch()}
-            {sidebarView === 'GIT'        && renderGit()}
-            {sidebarView === 'DEBUG'      && renderDebug()}
-            {sidebarView === 'EXTENSIONS' && renderExtensions()}
-            {sidebarView === 'SETTINGS'   && renderSettings()}
+            {renderSidebarContent()}
         </div>
       </div>
+
+      {/* Small-screen sidebar drawer */}
+      {mobileSidebarOpen && (
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-[60] bg-black/50 md:hidden"
+            aria-label={t('closeSidebar')}
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <aside className="absolute bottom-6 left-12 top-0 z-[70] flex w-[min(18rem,calc(100vw-3rem))] flex-col border-r border-[#454545] bg-[#252526] shadow-2xl md:hidden">
+            <div className="flex items-center justify-between border-b border-[#3c3c3c] px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400">
+              <span>{sidebarView}</span>
+              <button
+                type="button"
+                className="px-2 py-1 text-lg leading-none text-gray-400 hover:text-white"
+                aria-label={t('closeSidebar')}
+                onClick={() => setMobileSidebarOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {renderSidebarContent()}
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* Main Editor Area */}
       <div className="flex-1 flex flex-col bg-[#1e1e1e] relative min-w-0">
@@ -454,11 +508,11 @@ export default function App() {
 
             {/* Start Screen Overlay */}
             {gameState === GameState.START && (
-              <div className="absolute inset-0 bg-[#1e1e1e]/95 flex flex-col items-center justify-center z-50">
-                 <div className="mb-8 transform hover:scale-110 transition-transform duration-500">
-                    <VscLogo className="w-24 h-24" />
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto bg-[#1e1e1e]/95 p-4">
+                 <div className="mb-3 transform transition-transform duration-500 hover:scale-110 md:mb-8">
+                    <VscLogo className="h-16 w-16 md:h-24 md:w-24" />
                  </div>
-                 <h1 className="text-4xl font-bold text-[#007acc] mb-2 tracking-tight font-sans">{t('appTitle')}</h1>
+                 <h1 className="mb-2 text-center font-sans text-2xl font-bold tracking-tight text-[#007acc] md:text-4xl">{t('appTitle')}</h1>
                  <p className="text-[#ce9178] mb-2 font-mono text-sm">{t('appVersion')}</p>
 
                  {/* Language toggle on start screen */}
@@ -481,8 +535,8 @@ export default function App() {
                    </div>
                  )}
 
-                 <div className="grid grid-cols-2 gap-12 mb-8 text-sm text-gray-400 max-w-2xl">
-                    <div className="text-right border-r border-gray-600 pr-8">
+                 <div className="mb-5 grid max-w-2xl grid-cols-1 gap-3 text-sm text-gray-400 sm:grid-cols-2 sm:gap-12 md:mb-8">
+                    <div className="border-b border-gray-600 pb-3 text-left sm:border-b-0 sm:border-r sm:pr-8 sm:text-right">
                         <h3 className="font-bold text-white mb-2 text-lg">{t('controlsTitle')}</h3>
                         <p className="mb-1"><span className="text-[#569cd6]">WASD</span> : {t('ctrlMove')}</p>
                         <p className="mb-1"><span className="text-[#4ec9b0]">{t('ctrlSens')}</span> : {formatSensitivity(movementSensitivity)}</p>
@@ -490,7 +544,7 @@ export default function App() {
                         <p className="mb-1"><span className="text-[#4ec9b0]">SHIFT / R</span> : {t('ctrlRefactor')}</p>
                         <p className="mb-1"><span className="text-gray-500">ESC</span> : {t('ctrlPause')}</p>
                     </div>
-                    <div className="pl-4">
+                    <div className="sm:pl-4">
                         <h3 className="font-bold text-white mb-2 text-lg">{t('featuresTitle')}</h3>
                         <p className="mb-1">🧩 <span className="text-[#dcdcaa]">{t('feat1')}</span></p>
                         <p className="mb-1">🗺️ <span className="text-[#ce9178]">{t('feat2')}</span></p>
@@ -511,13 +565,13 @@ export default function App() {
 
             {/* Game Over Overlay */}
             {gameState === GameState.GAME_OVER && (
-              <div className="absolute inset-0 bg-[#750e0e]/95 flex flex-col items-center justify-center z-50 animate-in fade-in duration-300">
-                 <h1 className="text-6xl font-bold text-white mb-2">{t('buildFailed')}</h1>
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto bg-[#750e0e]/95 p-4 animate-in fade-in duration-300">
+                 <h1 className="mb-2 text-center text-4xl font-bold text-white md:text-6xl">{t('buildFailed')}</h1>
                  <p className="text-red-200 mb-8 font-mono text-xl">
                     <span className="text-gray-400">{t('exitCode')}</span> 1
                  </p>
 
-                 <div className="bg-[#1e1e1e] p-6 rounded-md border border-red-500 font-mono text-xs mb-8 w-3/4 max-w-2xl shadow-2xl">
+                 <div className="mb-5 w-full max-w-2xl rounded-md border border-red-500 bg-[#1e1e1e] p-4 font-mono text-xs shadow-2xl md:mb-8 md:w-3/4 md:p-6">
                     <p className="text-red-400 mb-2">{t('errorAt', { wave: stats.wave })}</p>
                     <p className="text-gray-400 pl-4">at Player.collision (GameEngine.tsx:404)</p>
                     <p className="text-gray-400 pl-4">at Entity.die (Entity.ts:23)</p>
@@ -552,14 +606,14 @@ export default function App() {
 
             {/* Wave Upgrade Overlay */}
             {gameState === GameState.UPGRADE && (
-              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto bg-black/80 p-4">
                  <div className="text-center mb-6">
                    <div className="text-[#4ec9b0] text-xs font-mono mb-1 uppercase tracking-widest">{t('waveDeployed', { wave: stats.wave - 1 })}</div>
                    <h2 className="text-3xl font-bold text-white mb-1">{t('chooseUpgrade')}</h2>
                    <p className="text-gray-400 text-sm font-mono">{t('upgradeSubtitle')}</p>
                  </div>
 
-                 <div className="flex gap-4 max-w-3xl w-full px-6">
+                 <div className="flex w-full max-w-3xl flex-col gap-3 px-2 sm:flex-row sm:gap-4 sm:px-6">
                    {stats.pendingUpgrades.map((opt: UpgradeOption) => (
                      <button
                        key={opt.id}
@@ -579,7 +633,7 @@ export default function App() {
         </div>
 
         {/* Terminal / Bottom Panel */}
-        <div className="h-40 bg-[#1e1e1e] border-t border-[#414141] flex flex-col shrink-0">
+        <div className="hidden h-40 shrink-0 flex-col border-t border-[#414141] bg-[#1e1e1e] md:flex">
           <div className="flex text-xs px-4 py-2 border-b border-[#414141] bg-[#1e1e1e]">
             <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termProblems')} <span className="bg-[#252526] rounded-full px-2 py-0.5 text-[10px] ml-1">{Math.max(0, 10 - stats.bugsFixed)}</span></span>
             <span className="mr-6 cursor-pointer hover:text-white text-[#007acc] border-b border-[#007acc] pb-2 -mb-2 uppercase text-[10px] tracking-wide">{t('termTerminal')}</span>
@@ -607,14 +661,14 @@ export default function App() {
           <span className="hover:bg-white/20 px-1 rounded flex items-center"><span className="mr-1 text-[10px]"></span> main*</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="hover:bg-white/20 px-1 rounded">Ln {stats.linesOfCode}, Col {stats.bugsFixed}</span>
-          <span className="hover:bg-white/20 px-1 rounded">Move {formatSensitivity(movementSensitivity)}</span>
-          <span className="hover:bg-white/20 px-1 rounded">Heap: 100MB</span>
-          <span className="hover:bg-white/20 px-1 rounded">UTF-8</span>
+          <span className="hidden rounded px-1 hover:bg-white/20 sm:inline">Ln {stats.linesOfCode}, Col {stats.bugsFixed}</span>
+          <span className="hidden rounded px-1 hover:bg-white/20 lg:inline">Move {formatSensitivity(movementSensitivity)}</span>
+          <span className="hidden rounded px-1 hover:bg-white/20 lg:inline">Heap: 100MB</span>
+          <span className="hidden rounded px-1 hover:bg-white/20 sm:inline">UTF-8</span>
           <span className="hover:bg-white/20 px-1 rounded">{stats.fps} FPS</span>
           <span
             className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
-            onClick={() => setSidebarView('SETTINGS')}
+            onClick={() => handleSidebarSelect('SETTINGS')}
             title={t('statusLang')}
           >
              <span>🌐 {lang.toUpperCase()}</span>

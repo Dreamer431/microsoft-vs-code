@@ -1,12 +1,43 @@
 // Language support — reads/writes a module-level variable so that
 // the game loop (canvas, floating texts) picks up changes each frame
 // without needing to be in a React dependency array.
+import type { UpgradeId } from '../types';
 
 export type Lang = 'en' | 'zh';
 
-let currentLang: Lang = 'en';
+const LANG_STORAGE_KEY = 'VSCODE_GAME_LANGUAGE';
 
-export function setLang(lang: Lang): void { currentLang = lang; }
+function readInitialLang(): Lang {
+  if (typeof window === 'undefined') return 'en';
+
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === 'en' || saved === 'zh') return saved;
+  } catch {
+    // Storage can be unavailable in privacy-focused browser contexts.
+  }
+
+  return window.navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en';
+}
+
+function applyDocumentLang(lang: Lang): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  }
+}
+
+let currentLang: Lang = readInitialLang();
+applyDocumentLang(currentLang);
+
+export function setLang(lang: Lang): void {
+  currentLang = lang;
+  applyDocumentLang(lang);
+  try {
+    window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    // The in-memory language still works when storage is unavailable.
+  }
+}
 export function getLang(): Lang { return currentLang; }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,6 +73,7 @@ const STRINGS = {
     bossBar:          'LEGACY MONOLITH (v{wave}.0)',
     bossBarPhase2:    '⚠ PHASE 2 ─ LEGACY MONOLITH (v{wave}.0) ⚠',
     hpLabel:          'HP',
+    gameCanvasLabel:  'VS Code arcade shooter game area',
 
     // ── Terminal logs ─────────────────────────────────────────────────────
     logInit:          'System initialized.',
@@ -110,6 +142,15 @@ const STRINGS = {
     // ── Search sidebar ────────────────────────────────────────────────────
     enemyDatabase:   'ENEMY DATABASE',
     unknownEntity:   'Unknown Entity',
+    enemyDescBug:      'Common bug. Weak alone, dangerous in a swarm.',
+    enemyDescSyntax:   'A stubborn syntax error with extra durability.',
+    enemyDescSpaghetti:'Unpredictable spaghetti code that drifts sideways.',
+    enemyDescMerge:    'A merge conflict that splits into two bugs on defeat.',
+    enemyDescLoop:     'An infinite loop that advances in a spiral pattern.',
+    enemyDescRace:     'A race condition that teleports at random intervals.',
+    enemyDescMemory:   'A memory leak that grows while it remains alive.',
+    enemyDesc404:      'A missing resource moving at very high speed.',
+    enemyDescMonolith: 'The legacy-code boss with projectiles and minions.',
 
     // ── Git sidebar ───────────────────────────────────────────────────────
     commitHistory:    'COMMIT HISTORY',
@@ -165,6 +206,10 @@ const STRINGS = {
     ttDebug:      'Run & Debug (Ctrl+Shift+D)',
     ttExtensions: 'Extensions (Ctrl+Shift+X)',
     ttSettings:   'Settings',
+    closeSidebar: 'Close sidebar',
+    touchMove:    'Touch movement controls',
+    touchShoot:   'Hold to shoot',
+    touchRefactor:'Run refactor ultimate',
 
     // ── Terminal tabs ─────────────────────────────────────────────────────
     termProblems: 'Problems',
@@ -212,6 +257,7 @@ const STRINGS = {
     bossBar:          '遗留代码单体 (v{wave}.0)',
     bossBarPhase2:    '⚠ 第二阶段 ─ 遗留代码单体 (v{wave}.0) ⚠',
     hpLabel:          '生命',
+    gameCanvasLabel:  'VS Code 街机射击游戏区域',
 
     // ── Terminal logs ─────────────────────────────────────────────────────
     logInit:       '系统已初始化。',
@@ -280,6 +326,15 @@ const STRINGS = {
     // ── Search sidebar ────────────────────────────────────────────────────
     enemyDatabase: '敌人数据库',
     unknownEntity: '未知实体',
+    enemyDescBug:       '普通 Bug，单独很弱，成群出现时更危险。',
+    enemyDescSyntax:    '比较耐打的语法错误。',
+    enemyDescSpaghetti: '横向飘动、轨迹难以预测的面条代码。',
+    enemyDescMerge:     '被击败后会分裂成两个 Bug 的合并冲突。',
+    enemyDescLoop:      '沿螺旋轨迹前进的死循环。',
+    enemyDescRace:      '定期随机瞬移的竞态条件。',
+    enemyDescMemory:    '存活越久体积越大的内存泄漏。',
+    enemyDesc404:       '高速移动的资源丢失错误。',
+    enemyDescMonolith:  '会发射弹幕并召唤小怪的遗留代码 Boss。',
 
     // ── Git sidebar ───────────────────────────────────────────────────────
     commitHistory:   '提交历史',
@@ -335,6 +390,10 @@ const STRINGS = {
     ttDebug:      '运行和调试 (Ctrl+Shift+D)',
     ttExtensions: '扩展 (Ctrl+Shift+X)',
     ttSettings:   '设置',
+    closeSidebar: '关闭侧边栏',
+    touchMove:    '触控移动',
+    touchShoot:   '按住射击',
+    touchRefactor:'释放重构大招',
 
     // ── Terminal tabs ─────────────────────────────────────────────────────
     termProblems: '问题',
@@ -356,6 +415,8 @@ const STRINGS = {
 } as const;
 
 export type TranslationKey = keyof typeof STRINGS.en;
+const zhTranslationCompletenessCheck: Record<TranslationKey, string> = STRINGS.zh;
+void zhTranslationCompletenessCheck;
 
 /** Look up a translation string, substituting {placeholder} tokens. */
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
@@ -371,6 +432,6 @@ export function t(key: TranslationKey, params?: Record<string, string | number>)
 }
 
 /** Convenience helper for upgrade card translations. */
-export function tUpgrade(id: string, field: 'title' | 'desc'): string {
+export function tUpgrade(id: UpgradeId, field: 'title' | 'desc'): string {
   return t(`upg_${id}_${field}` as TranslationKey);
 }

@@ -10,7 +10,7 @@
 
 [![React](https://img.shields.io/badge/React-19.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.2.0-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8.1.5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 
@@ -97,6 +97,8 @@ SHIFT / R  → Refactor Ultimate (when charged)
 ESC / P    → Pause game
 ```
 
+On touch devices, the game area shows directional, fire, and refactor controls. Activity-bar buttons open a dismissible mobile sidebar.
+
 ### Accessibility / Tuning
 - Open the **Settings** sidebar from the gear icon in the activity bar
 - Adjust **Movement Sensitivity** from `0.5x` to `2.0x`
@@ -137,7 +139,7 @@ Survive increasingly difficult waves of coding errors and deploy your project! E
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Node.js** (v16 or higher)
+- **Node.js** (20.19+ on the 20.x line, or 22.12+)
 - **npm** or **yarn**
 
 ### Installation
@@ -162,6 +164,9 @@ The game will open at `http://localhost:3000` 🎮
 # Build optimized version
 npm run build
 
+# Run type checking, lint, tests, and the production build
+npm run verify
+
 # Preview production build
 npm run preview
 
@@ -178,12 +183,17 @@ npm run deploy
 ```
 microsoft-vs-code/
 ├── components/
-│   └── GameEngine.tsx      # Core game logic, physics, rendering
+│   ├── GameEngine.tsx      # Core game loop, entity systems, Canvas rendering
+│   └── TouchControls.tsx   # Mobile touch keycaps
 ├── utils/
-│   └── audio.ts            # WebAudio synthesised SFX engine
+│   ├── audio.ts            # WebAudio synthesised SFX engine
+│   ├── gameLogic.ts        # Tested timing, damage, and input logic
+│   ├── gameState.ts        # Player and stats state factories
+│   └── i18n.ts             # EN/ZH strings and language persistence
 ├── App.tsx                 # VS Code UI shell, sidebars, overlays
 ├── types.ts                # TypeScript interfaces for game entities
 ├── constants.ts            # Game configuration, enemy data, upgrade options
+├── index.css               # Local Tailwind entry and accessibility styles
 ├── index.tsx               # React entry point
 ├── index.html              # HTML template
 └── vscode.png              # VS Code logo asset
@@ -193,10 +203,11 @@ microsoft-vs-code/
 
 - **React 19.2** - UI framework
 - **TypeScript 5.8** - Type safety
-- **Vite 6.2** - Build tool and dev server
+- **Vite 8.1** - Build tool and dev server
 - **HTML5 Canvas** - Game rendering
 - **Web Audio API** - Procedural sound effects
-- **CSS3 / Tailwind** - VS Code styling
+- **CSS3 / Tailwind 3** - Locally compiled VS Code styling with no runtime CDN
+- **Vitest / ESLint** - Pure game-logic tests and static quality gates
 
 ### Key Components
 
@@ -268,14 +279,18 @@ export const SPECIAL_CHARGE_PER_KILL = 5;  // Ultimate charge rate
 export const UPGRADE_OPTIONS = [
   {
     id: 'MY_UPGRADE',
-    title: 'Custom Upgrade',
-    desc: 'Does something awesome.',
     icon: '🔥'
   }
 ]
 ```
 
-Then implement the effect in `GameEngine.tsx` inside the `pendingUpgrade` `useEffect` switch:
+Adding an enemy requires more than its config: extend `EnemyType` in `types.ts`, add EN/ZH strings for its `descKey`, include it in the wave spawn distribution, implement any special AI in `GameEngine.tsx`, and finish with `npm run verify`.
+
+Then complete all four integration points:
+
+1. Add `'MY_UPGRADE'` to the `UpgradeId` union in `types.ts`.
+2. Add `upg_MY_UPGRADE_title` and `upg_MY_UPGRADE_desc` to both language maps in `utils/i18n.ts`.
+3. Handle the effect in the `pendingUpgrade` `useEffect` switch inside `GameEngine.tsx`:
 
 ```typescript
 case 'MY_UPGRADE':
@@ -283,13 +298,14 @@ case 'MY_UPGRADE':
   break;
 ```
 
+4. Add a test for the effect and run `npm run verify`.
+
 ---
 
 ## 🐛 Known Issues
 
 - [ ] Hitboxes may need fine-tuning for pixel-perfect collision
 - [ ] Performance can drop on some machines with 200+ entities
-- [ ] Mobile touch controls not yet implemented
 
 ---
 

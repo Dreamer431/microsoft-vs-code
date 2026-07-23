@@ -1,16 +1,19 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyType, EnemyProjectile, UpgradeOption } from '../types';
-import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SPEED, PLAYER_BOOST_SPEED, ENEMY_TYPES, POWER_UPS, PARTICLE_CHARS, MAX_AMMO, AMMO_REGEN, RELOAD_TIME, BACKGROUND_STRINGS, SPECIAL_CHARGE_PER_KILL, COMBO_TIMER_MAX, MAX_SPECIAL_CHARGE, UPGRADE_OPTIONS } from '../constants';
+import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyType, EnemyProjectile, UpgradeOption, UpgradeId } from '../types';
+import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SPEED, PLAYER_BOOST_SPEED, ENEMY_TYPES, POWER_UPS, PARTICLE_CHARS, AMMO_REGEN, RELOAD_TIME, BACKGROUND_STRINGS, SPECIAL_CHARGE_PER_KILL, COMBO_TIMER_MAX, MAX_SPECIAL_CHARGE, UPGRADE_OPTIONS } from '../constants';
 import { sfxShoot, sfxHit, sfxExplosion, sfxPowerUp, sfxHeal, sfxBossAppear, sfxUltimate, sfxPlayerHit, sfxWaveClear } from '../utils/audio';
 import { t } from '../utils/i18n';
+import { FRAME_DURATION, applyDamage, crossedFrameInterval, getFrameScale, regenerateAmmo, shouldTogglePause } from '../utils/gameLogic';
+import { createInitialGameStats, createInitialPlayer } from '../utils/gameState';
+import TouchControls, { TouchControlCode } from './TouchControls';
 
 interface GameEngineProps {
   gameState: GameState;
   setGameState: (state: React.SetStateAction<GameState>) => void;
   onStatsUpdate: (stats: GameStats) => void;
   /** Id of the upgrade the player chose. GameEngine consumes it and calls onUpgradeConsumed. */
-  pendingUpgrade: string | null;
+  pendingUpgrade: UpgradeId | null;
   onUpgradeConsumed: () => void;
   movementSensitivity: number;
   restartToken: number;
@@ -36,20 +39,11 @@ const shouldIgnoreKeyboardEvent = (target: EventTarget | null) => {
   );
 };
 
-const FRAME_DURATION = 1000 / 60;
-const MAX_FRAME_SCALE = 2.5;
-
-const getFrameScale = (deltaTime: number) => {
-  if (!Number.isFinite(deltaTime) || deltaTime <= 0) return 1;
-  return Math.min(MAX_FRAME_SCALE, deltaTime / FRAME_DURATION);
-};
-
-const crossedFrameInterval = (previousAge: number, currentAge: number, interval: number) =>
-  Math.floor(previousAge / interval) !== Math.floor(currentAge / interval);
+const GAME_FONT = '"Cascadia Code", Consolas, monospace';
 
 // Pick N distinct upgrade options at random from the pool
 const pickUpgradeChoices = (count = 3): UpgradeOption[] => {
-  const pool = [...UPGRADE_OPTIONS] as UpgradeOption[];
+  const pool: UpgradeOption[] = UPGRADE_OPTIONS.map(option => ({ ...option }));
   const result: UpgradeOption[] = [];
   while (result.length < count && pool.length > 0) {
     const idx = Math.floor(Math.random() * pool.length);
@@ -71,27 +65,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
   const [mounted, setMounted] = useState(false);
 
   // ── Player state ──────────────────────────────────────────────────────────
-  const playerRef = useRef<Player>({
-    id: 'player',
-    x: CANVAS_WIDTH / 2,
-    y: CANVAS_HEIGHT - 60,
-    width: 40,
-    height: 40,
-    vx: 0,
-    vy: 0,
-    color: COLORS.accent,
-    hp: 100,
-    maxHp: 100,
-    invulnerable: 0,
-    weaponLevel: 1,
-    speedBuff: 0,
-    shield: 0,
-    ammo: MAX_AMMO,
-    maxAmmo: MAX_AMMO,
-    isReloading: false,
-    reloadTimer: 0,
-    specialCharge: 0
-  });
+  const playerRef = useRef<Player>(createInitialPlayer());
 
   // Permanent per-run modifiers from wave upgrades
   const overclockRef = useRef(false);   // OVERCLOCK: fire rate 150→80ms
@@ -109,26 +83,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
   const shakeRef = useRef<number>(0);
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const statsRef = useRef<GameStats>({
-      score: 0,
-      bugsFixed: 0,
-      linesOfCode: 0,
-      wave: 1,
-      fps: 60,
-      lastLog: t('logInit'),
-      levelProgress: 0,
-      levelTarget: 15,
-      bossActive: false,
-      combo: 0,
-      comboTimer: 0,
-      maxCombo: 0,
-      weaponLevel: 1,
-      ammo: MAX_AMMO,
-      maxAmmo: MAX_AMMO,
-      specialCharge: 0,
-      shieldActive: false,
-      pendingUpgrades: []
-  });
+  const statsRef = useRef<GameStats>(createInitialGameStats(t('logInit')));
 
   const lastFireTimeRef = useRef<number>(0);
   const lastSpawnTimeRef = useRef<number>(0);
@@ -395,24 +350,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     overclockRef.current = false;
     fastGcRef.current = false;
 
-    playerRef.current = {
-      id: 'player',
-      x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 60,
-      width: 40, height: 40,
-      vx: 0, vy: 0,
-      color: COLORS.accent,
-      hp: 100, maxHp: 100,
-      invulnerable: 0,
-      weaponLevel: 1,
-      speedBuff: 0,
-      shield: 0,
-      ammo: MAX_AMMO,
-      maxAmmo: MAX_AMMO,
-      isReloading: false,
-      reloadTimer: 0,
-      specialCharge: 0
-    };
+    playerRef.current = createInitialPlayer();
     projectilesRef.current = [];
     enemyProjectilesRef.current = [];
     enemiesRef.current = [];
@@ -421,26 +359,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     floatingTextsRef.current = [];
     shakeRef.current = 0;
     keysRef.current.clear();
-    statsRef.current = {
-        score: 0,
-        bugsFixed: 0,
-        linesOfCode: 0,
-        wave: 1,
-        fps: 60,
-        lastLog: t('logNewSession'),
-        levelProgress: 0,
-        levelTarget: 15,
-        bossActive: false,
-        combo: 0,
-        comboTimer: 0,
-        maxCombo: 0,
-        weaponLevel: 1,
-        ammo: MAX_AMMO,
-        maxAmmo: MAX_AMMO,
-        specialCharge: 0,
-        shieldActive: false,
-        pendingUpgrades: []
-    };
+    statsRef.current = createInitialGameStats(t('logNewSession'));
     lastFireTimeRef.current = 0;
     lastSpawnTimeRef.current = performance.now();
     lastTimeRef.current = performance.now();
@@ -452,7 +371,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (shouldIgnoreKeyboardEvent(e.target)) return;
-      if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (shouldTogglePause(e.code, e.repeat)) {
         setGameState(prev => {
           if (prev === GameState.PLAYING) return GameState.PAUSED;
           if (prev === GameState.PAUSED) return GameState.PLAYING;
@@ -475,15 +394,13 @@ const GameEngine: React.FC<GameEngineProps> = ({
     window.addEventListener('blur', handleBlur);
     setMounted(true);
 
-    for (let i = 0; i < 20; i++) {
-        bgParticlesRef.current.push({
+    bgParticlesRef.current = Array.from({ length: 20 }, () => ({
             x: Math.random() * CANVAS_WIDTH,
             y: Math.random() * CANVAS_HEIGHT,
             text: BACKGROUND_STRINGS[Math.floor(Math.random() * BACKGROUND_STRINGS.length)],
             opacity: Math.random() * 0.1 + 0.02,
             speed: Math.random() * 1 + 0.5
-        });
-    }
+    }));
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -509,10 +426,10 @@ const GameEngine: React.FC<GameEngineProps> = ({
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         if (gameState === GameState.PAUSED) {
           ctx.fillStyle = '#fff';
-          ctx.font = 'bold 40px "Fira Code"';
+          ctx.font = `bold 40px ${GAME_FONT}`;
           ctx.textAlign = 'center';
           ctx.fillText(t('breakpointHit'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-          ctx.font = '20px "Fira Code"';
+          ctx.font = `20px ${GAME_FONT}`;
           ctx.fillStyle = '#cccccc';
           ctx.fillText(t('pressToContinue'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
           ctx.textAlign = 'left';
@@ -528,7 +445,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
              ctx.fillStyle = COLORS.bg;
              ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
              ctx.fillStyle = '#2e2e2e';
-             ctx.font = '14px "Fira Code"';
+             ctx.font = `14px ${GAME_FONT}`;
              bgParticlesRef.current.forEach(p => {
                  p.y += p.speed;
                  if (p.y > CANVAS_HEIGHT) { p.y = -20; p.x = Math.random() * CANVAS_WIDTH; }
@@ -598,7 +515,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         }
     } else {
         if (!keysRef.current.has('Space') && player.ammo < player.maxAmmo) {
-            player.ammo = Math.min(player.maxAmmo, player.ammo + AMMO_REGEN);
+            player.ammo = regenerateAmmo(player.ammo, player.maxAmmo, AMMO_REGEN, frameScale);
         }
     }
 
@@ -749,7 +666,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         player.y + player.height > enemy.y
       ) {
         if (player.shield > 0) {
-             enemy.hp -= 10;
+             enemy.hp = applyDamage(enemy.hp, 10);
              createExplosion(enemy.x, enemy.y, '#0db7ed', 5);
              addFloatingText(player.x, player.y - 20, t('blocked'), '#0db7ed');
              handleEnemyDefeat(enemy);
@@ -761,10 +678,10 @@ const GameEngine: React.FC<GameEngineProps> = ({
           createExplosion(player.x, player.y, COLORS.error, 15);
           shakeRef.current = 15;
           addFloatingText(player.x, player.y - 40, t('exception'), COLORS.error);
-          sfxPlayerHit();
-          if (player.hp <= 0) triggerGameOver();
+           sfxPlayerHit();
+           if (player.hp <= 0) triggerGameOver();
+           if (enemy.type !== 'MONOLITH') enemy.hp = 0;
         }
-        if (enemy.type !== 'MONOLITH') enemy.hp = 0;
       }
     });
 
@@ -879,7 +796,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Background code rain
-    ctx.font = '12px "Fira Code"';
+    ctx.font = `12px ${GAME_FONT}`;
     bgParticlesRef.current.forEach(p => {
         ctx.fillStyle = '#2e2e2e';
         ctx.globalAlpha = p.opacity;
@@ -893,7 +810,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
         ctx.globalAlpha = 0.05;
         ctx.fillStyle = COLORS.text;
-        ctx.font = 'bold 120px "Fira Code"';
+        ctx.font = `bold 120px ${GAME_FONT}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(`${statsRef.current.combo}x`, 0, 0);
@@ -946,7 +863,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.strokeStyle = '#3c3c3c';
     ctx.strokeRect(hpHudX, hpHudY, 148, 18);
     ctx.fillStyle = '#858585';
-    ctx.font = '10px "Fira Code"';
+    ctx.font = `10px ${GAME_FONT}`;
     ctx.fillText(t('hpLabel'), hpHudX + 6, hpHudY + 12);
     ctx.fillStyle = '#333333';
     ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth, 8);
@@ -957,7 +874,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.restore();
 
     // Enemy projectiles
-    ctx.font = '20px "Fira Code"';
+    ctx.font = `20px ${GAME_FONT}`;
     enemyProjectilesRef.current.forEach(p => {
         ctx.fillStyle = p.color;
         ctx.fillText(p.label, p.x - 10, p.y);
@@ -967,7 +884,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     enemiesRef.current.forEach(e => {
       ctx.save();
       ctx.fillStyle = e.flashTimer > 0 ? '#ffffff' : e.color;
-      ctx.font = `bold ${e.type === 'MONOLITH' ? '24px' : '16px'} "Fira Code"`;
+      ctx.font = `bold ${e.type === 'MONOLITH' ? '24px' : '16px'} ${GAME_FONT}`;
       ctx.fillText(e.text, e.x, e.y + 20);
       ctx.restore();
 
@@ -983,7 +900,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     projectilesRef.current.forEach(p => {
       ctx.fillStyle = p.color;
       if (p.type === 'SUDO_BLAST') {
-          ctx.font = '10px "Fira Code"';
+          ctx.font = `10px ${GAME_FONT}`;
           ctx.fillText('sudo', p.x - 5, p.y);
       } else {
           ctx.fillRect(p.x, p.y, p.width, p.height);
@@ -1013,7 +930,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.globalAlpha = 1.0;
 
     // Floating texts
-    ctx.font = 'bold 14px "Fira Code"';
+    ctx.font = `bold 14px ${GAME_FONT}`;
     floatingTextsRef.current.forEach(t => {
         ctx.fillStyle = t.color;
         ctx.fillText(t.text, t.x, t.y);
@@ -1034,7 +951,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         ctx.strokeRect(barX, 20, barWidth, 15);
         ctx.fillStyle = isRage ? COLORS.warning : '#fff';
         ctx.textAlign = 'center';
-        ctx.font = 'bold 12px "Fira Code"';
+        ctx.font = `bold 12px ${GAME_FONT}`;
         ctx.fillText(
           isRage
             ? t('bossBarPhase2', { wave: statsRef.current.wave })
@@ -1079,6 +996,9 @@ const GameEngine: React.FC<GameEngineProps> = ({
     ctx.restore();
 
     frameIdRef.current = requestAnimationFrame(gameLoop);
+  // Engine helpers mutate refs only. Adding their render-local identities here would
+  // restart the animation loop every time the throttled stats UI re-renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, movementSensitivity, onStatsUpdate, setGameState, syncStatsToUI, triggerGameOver]);
 
   useEffect(() => {
@@ -1093,14 +1013,29 @@ const GameEngine: React.FC<GameEngineProps> = ({
     return () => cancelAnimationFrame(frameIdRef.current);
   }, [gameState, gameLoop, mounted, resetGame, restartToken]);
 
+  const handleTouchControl = useCallback((code: TouchControlCode, pressed: boolean) => {
+    if (pressed) {
+      keysRef.current.add(code);
+    } else {
+      keysRef.current.delete(code);
+    }
+  }, []);
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={CANVAS_WIDTH}
-      height={CANVAS_HEIGHT}
-      className="cursor-none shadow-2xl shadow-black border border-[#333]"
-      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        role="img"
+        aria-label={t('gameCanvasLabel')}
+        className="cursor-none border border-[#333] shadow-2xl shadow-black"
+        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+      />
+      {gameState === GameState.PLAYING && (
+        <TouchControls onControlChange={handleTouchControl} />
+      )}
+    </>
   );
 };
 

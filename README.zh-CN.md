@@ -185,8 +185,21 @@ npm run deploy
 ```
 microsoft-vs-code/
 ├── components/
-│   ├── GameEngine.tsx      # 核心游戏循环、实体系统、Canvas 渲染
+│   ├── GameEngine.tsx      # 帧循环与运行时调度
 │   └── TouchControls.tsx   # 移动端触控键帽
+├── game/
+│   ├── advanceEntities.ts  # 弹丸与短生命周期实体推进
+│   ├── combat.ts           # 碰撞效果与伤害结算
+│   ├── collision.ts        # 通用碰撞检测
+│   ├── contentSelection.ts # 敌人、升级与道具选择
+│   ├── entityFactory.ts    # 敌人、弹丸与特效实体构造
+│   ├── playerSystem.ts     # 移动、计时、换弹与射击
+│   ├── progression.ts      # 分数、连击、波次与击败奖励
+│   ├── refactorUltimate.ts # 重构终极技能
+│   ├── renderScene.ts      # Canvas 场景渲染
+│   ├── updateEnemy.ts      # 敌人与 Boss 行为更新
+│   ├── upgrades.ts         # 波次升级效果
+│   └── useGameInput.ts     # 键盘输入生命周期
 ├── utils/
 │   ├── audio.ts            # WebAudio 合成音效引擎
 │   ├── gameLogic.ts        # 可测试的时间、伤害、输入纯逻辑
@@ -214,15 +227,26 @@ microsoft-vs-code/
 ### 核心组件
 
 #### `GameEngine.tsx`
-包含所有游戏逻辑：
+负责协调游戏运行时：
 - 按真实时间推进的游戏循环，减少帧率差异带来的速度变化
-- 实体管理（玩家、敌人、弹幕、粒子、道具）
-- 碰撞检测
-- 敌人 AI 行为（螺旋、瞬移、膨胀、分裂、Boss 第二阶段）
-- 道具生成与拾取
-- Boss 机制与阶段切换
+- 可变实体状态与 `requestAnimationFrame` 生命周期
+- 敌人生成、战斗、成长与升级流程协调
+- 将输入、碰撞、敌人行为和绘制委托给独立模块
 - 波次升级触发 → `GameState.UPGRADE`
-- Canvas 渲染与画布内 HUD
+
+#### `game/` 模块
+- `useGameInput.ts`：负责键盘监听、清理与暂停切换
+- `entityFactory.ts`：创建敌人、Boss、弹丸、道具与特效实体
+- `advanceEntities.ts`：推进弹丸、粒子与浮动文字
+- `combat.ts`：结算接触伤害、弹丸伤害、道具拾取与实体清理
+- `playerSystem.ts`：负责移动、状态计时、弹药、换弹与射击
+- `progression.ts`：负责击败奖励、连击、Boss 通关与升级选项
+- `refactorUltimate.ts`：负责终极技能的激活与伤害
+- `upgrades.ts`：应用波次升级与永久局内增益
+- `updateEnemy.ts`：负责敌人移动、特殊行为与 Boss 阶段
+- `collision.ts`：提供通用碰撞检测
+- `contentSelection.ts`：负责带权随机内容选择
+- `renderScene.ts`：负责 Canvas 绘制与视觉特效
 
 #### `App.tsx`
 处理 VS Code 界面：
@@ -286,13 +310,13 @@ export const UPGRADE_OPTIONS = [
 ]
 ```
 
-新增敌人不只需要添加配置：还要同步扩展 `types.ts` 中的 `EnemyType`，为 `descKey` 添加中英文翻译，将类型加入 `GameEngine.tsx` 的波次生成分布，并在敌人 AI 分支实现特殊行为。最后运行 `npm run verify`。
+新增敌人不只需要添加配置：还要同步扩展 `types.ts` 中的 `EnemyType`，为 `descKey` 添加中英文翻译，将类型加入 `game/contentSelection.ts` 的波次生成分布，并在 `game/updateEnemy.ts` 实现特殊行为。最后运行 `npm run verify`。
 
 然后完成以下步骤：
 
 1. 在 `types.ts` 的 `UpgradeId` 联合类型中加入 `'MY_UPGRADE'`。
 2. 在 `utils/i18n.ts` 的中英文表中分别加入 `upg_MY_UPGRADE_title` 和 `upg_MY_UPGRADE_desc`。
-3. 在 `GameEngine.tsx` 的 `pendingUpgrade` `useEffect` switch 中实现效果：
+3. 在 `game/upgrades.ts` 的 `applyUpgrade` switch 中实现效果：
 
 ```typescript
 case 'MY_UPGRADE':

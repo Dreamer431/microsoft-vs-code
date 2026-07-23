@@ -183,8 +183,21 @@ npm run deploy
 ```
 microsoft-vs-code/
 ├── components/
-│   ├── GameEngine.tsx      # Core game loop, entity systems, Canvas rendering
+│   ├── GameEngine.tsx      # Frame and runtime orchestration
 │   └── TouchControls.tsx   # Mobile touch keycaps
+├── game/
+│   ├── advanceEntities.ts  # Projectile and transient-entity advancement
+│   ├── combat.ts           # Collision effects and damage resolution
+│   ├── collision.ts        # Shared collision primitives
+│   ├── contentSelection.ts # Enemy, upgrade, and power-up selection
+│   ├── entityFactory.ts    # Enemy, projectile, and effect construction
+│   ├── playerSystem.ts     # Movement, timers, reload, and shooting
+│   ├── progression.ts      # Score, combo, wave, and defeat rewards
+│   ├── refactorUltimate.ts # Refactor ultimate ability
+│   ├── renderScene.ts      # Canvas scene renderer
+│   ├── updateEnemy.ts      # Enemy and boss behavior updates
+│   ├── upgrades.ts         # Wave-upgrade effects
+│   └── useGameInput.ts     # Keyboard input lifecycle
 ├── utils/
 │   ├── audio.ts            # WebAudio synthesised SFX engine
 │   ├── gameLogic.ts        # Tested timing, damage, and input logic
@@ -212,15 +225,26 @@ microsoft-vs-code/
 ### Key Components
 
 #### `GameEngine.tsx`
-Contains all game logic:
+Coordinates the game runtime:
 - Time-scaled game loop for frame-rate independent gameplay
-- Entity management (players, enemies, projectiles, particles, power-ups)
-- Collision detection
-- Enemy AI behaviours (spiral, teleport, grow, split, Boss Phase 2)
-- Power-up spawning and pickup handling
-- Boss mechanics and phase transitions
+- Mutable entity state and `requestAnimationFrame` lifecycle
+- Spawn, combat, progression, and upgrade coordination
+- Delegates input, collisions, enemy behaviour, and drawing to focused modules
 - Wave upgrade trigger → `GameState.UPGRADE`
-- Canvas rendering and in-canvas HUD
+
+#### `game/` modules
+- `useGameInput.ts` owns keyboard listener setup, cleanup, and pause handling
+- `entityFactory.ts` creates enemies, bosses, projectiles, power-ups, and effects
+- `advanceEntities.ts` advances projectiles, particles, and floating text
+- `combat.ts` resolves contact, projectile damage, pickups, and entity cleanup
+- `playerSystem.ts` owns movement, status timers, ammo, reload, and shooting
+- `progression.ts` owns defeat rewards, combos, boss completion, and upgrade choices
+- `refactorUltimate.ts` owns activation and damage for the ultimate ability
+- `upgrades.ts` applies selected wave upgrades and permanent run modifiers
+- `updateEnemy.ts` owns enemy movement, special behaviour, and boss phases
+- `collision.ts` provides shared collision primitives
+- `contentSelection.ts` owns weighted random content selection
+- `renderScene.ts` owns Canvas drawing and visual effects
 
 #### `App.tsx`
 Handles the VS Code interface:
@@ -284,13 +308,13 @@ export const UPGRADE_OPTIONS = [
 ]
 ```
 
-Adding an enemy requires more than its config: extend `EnemyType` in `types.ts`, add EN/ZH strings for its `descKey`, include it in the wave spawn distribution, implement any special AI in `GameEngine.tsx`, and finish with `npm run verify`.
+Adding an enemy requires more than its config: extend `EnemyType` in `types.ts`, add EN/ZH strings for its `descKey`, include it in the wave spawn distribution in `game/contentSelection.ts`, implement any special AI in `game/updateEnemy.ts`, and finish with `npm run verify`.
 
 Then complete all four integration points:
 
 1. Add `'MY_UPGRADE'` to the `UpgradeId` union in `types.ts`.
 2. Add `upg_MY_UPGRADE_title` and `upg_MY_UPGRADE_desc` to both language maps in `utils/i18n.ts`.
-3. Handle the effect in the `pendingUpgrade` `useEffect` switch inside `GameEngine.tsx`:
+3. Handle the effect in the `applyUpgrade` switch inside `game/upgrades.ts`:
 
 ```typescript
 case 'MY_UPGRADE':

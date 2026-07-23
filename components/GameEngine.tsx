@@ -1,11 +1,33 @@
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyType, EnemyProjectile, UpgradeOption, UpgradeId } from '../types';
-import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_SPEED, PLAYER_BOOST_SPEED, ENEMY_TYPES, POWER_UPS, PARTICLE_CHARS, AMMO_REGEN, RELOAD_TIME, BACKGROUND_STRINGS, SPECIAL_CHARGE_PER_KILL, COMBO_TIMER_MAX, MAX_SPECIAL_CHARGE, UPGRADE_OPTIONS } from '../constants';
-import { sfxShoot, sfxHit, sfxExplosion, sfxPowerUp, sfxHeal, sfxBossAppear, sfxUltimate, sfxPlayerHit, sfxWaveClear } from '../utils/audio';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyProjectile, UpgradeId } from '../types';
+import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, BACKGROUND_STRINGS } from '../constants';
+import { sfxBossAppear } from '../utils/audio';
 import { t } from '../utils/i18n';
-import { FRAME_DURATION, applyDamage, crossedFrameInterval, getFrameScale, regenerateAmmo, shouldTogglePause } from '../utils/gameLogic';
+import { FRAME_DURATION, getFrameScale } from '../utils/gameLogic';
 import { createInitialGameStats, createInitialPlayer } from '../utils/gameState';
+import { renderPausedFrame, renderScene, renderStartFrame } from '../game/renderScene';
+import type { BackgroundParticle } from '../game/renderScene';
+import { setControlPressed, useGameInput } from '../game/useGameInput';
+import { updateEnemy } from '../game/updateEnemy';
+import type { EnemySpawnType } from '../game/contentSelection';
+import {
+  createBoss,
+  createEnemy,
+  createExplosionParticles,
+  createFloatingText,
+} from '../game/entityFactory';
+import {
+  advanceEnemyProjectiles,
+  advanceFloatingTexts,
+  advanceParticles,
+  advancePlayerProjectiles,
+} from '../game/advanceEntities';
+import { resolveCombat } from '../game/combat';
+import { updatePlayerSystem } from '../game/playerSystem';
+import { applyUpgrade } from '../game/upgrades';
+import { resolveEnemyDefeat } from '../game/progression';
+import { activateRefactorUltimate } from '../game/refactorUltimate';
 import TouchControls, { TouchControlCode } from './TouchControls';
 
 interface GameEngineProps {
@@ -19,39 +41,6 @@ interface GameEngineProps {
   restartToken: number;
 }
 
-interface BackgroundParticle {
-    x: number;
-    y: number;
-    text: string;
-    opacity: number;
-    speed: number;
-}
-
-const shouldIgnoreKeyboardEvent = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName;
-  return (
-    target.isContentEditable ||
-    tagName === 'INPUT' ||
-    tagName === 'TEXTAREA' ||
-    tagName === 'SELECT' ||
-    tagName === 'BUTTON'
-  );
-};
-
-const GAME_FONT = '"Cascadia Code", Consolas, monospace';
-
-// Pick N distinct upgrade options at random from the pool
-const pickUpgradeChoices = (count = 3): UpgradeOption[] => {
-  const pool: UpgradeOption[] = UPGRADE_OPTIONS.map(option => ({ ...option }));
-  const result: UpgradeOption[] = [];
-  while (result.length < count && pool.length > 0) {
-    const idx = Math.floor(Math.random() * pool.length);
-    result.push(pool.splice(idx, 1)[0]);
-  }
-  return result;
-};
-
 const GameEngine: React.FC<GameEngineProps> = ({
   gameState,
   setGameState,
@@ -62,7 +51,6 @@ const GameEngine: React.FC<GameEngineProps> = ({
   restartToken
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [mounted, setMounted] = useState(false);
 
   // ── Player state ──────────────────────────────────────────────────────────
   const playerRef = useRef<Player>(createInitialPlayer());
@@ -111,55 +99,27 @@ const GameEngine: React.FC<GameEngineProps> = ({
   }, [syncStatsToUI, setGameState]);
 
   const createExplosion = (x: number, y: number, color: string, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 4 + 1;
-      particlesRef.current.push({
-        id: Math.random().toString(),
-        x, y,
-        width: 10, height: 10,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        color,
-        life: 1.0, maxLife: 1.0, alpha: 1,
-        char: PARTICLE_CHARS[Math.floor(Math.random() * PARTICLE_CHARS.length)]
-      });
-    }
+    particlesRef.current.push(...createExplosionParticles(x, y, color, count));
   };
 
   const addFloatingText = (x: number, y: number, text: string, color: string, vy = -1) => {
-    floatingTextsRef.current.push({ id: Math.random().toString(), x, y, text, color, life: 60, vy });
+    floatingTextsRef.current.push(createFloatingText(x, y, text, color, vy));
   };
 
   // ── Apply upgrade (called when pendingUpgrade prop fires) ─────────────────
   useEffect(() => {
     if (!pendingUpgrade) return;
-    const player = playerRef.current;
-
-    switch (pendingUpgrade) {
-      case 'WEAPON':
-        player.weaponLevel = Math.min(5, player.weaponLevel + 1);
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('compilerUpgraded'), COLORS.class);
-        break;
-      case 'MAX_HP':
-        player.maxHp += 25;
-        player.hp = player.maxHp;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('heapExpanded'), COLORS.gitAdded);
-        break;
-      case 'MAX_AMMO':
-        player.maxAmmo += 10;
-        player.ammo = player.maxAmmo;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('bufferOverflow'), COLORS.keyword);
-        break;
-      case 'RELOAD':
-        fastGcRef.current = true;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('fastGcEnabled'), COLORS.function);
-        break;
-      case 'OVERCLOCK':
-        overclockRef.current = true;
-        addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('overclocked'), COLORS.warning);
-        break;
-    }
+    const modifiers = applyUpgrade(
+      pendingUpgrade,
+      playerRef.current,
+      {
+        fastGc: fastGcRef.current,
+        overclock: overclockRef.current,
+      },
+      addFloatingText,
+    );
+    fastGcRef.current = modifiers.fastGc;
+    overclockRef.current = modifiers.overclock;
 
     statsRef.current.pendingUpgrades = [];
     syncStatsToUI();
@@ -168,70 +128,16 @@ const GameEngine: React.FC<GameEngineProps> = ({
   }, [pendingUpgrade]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Spawn helpers ─────────────────────────────────────────────────────────
-  const spawnEnemy = (type: EnemyType | 'RANDOM', x?: number, y?: number, scaleHP = 1) => {
-      let enemyDef: typeof ENEMY_TYPES[number] = ENEMY_TYPES[0];
-
-      if (type === 'RANDOM') {
-        const r = Math.random();
-        const wave = statsRef.current.wave;
-        if (wave === 1) {
-             if (r > 0.8) enemyDef = ENEMY_TYPES[1];
-        } else if (wave === 2) {
-             if (r > 0.9) enemyDef = ENEMY_TYPES[1];
-             else if (r > 0.6) enemyDef = ENEMY_TYPES[2];
-        } else if (wave >= 3) {
-             if (r > 0.92) enemyDef = ENEMY_TYPES[5];
-             else if (r > 0.84) enemyDef = ENEMY_TYPES[4];
-             else if (r > 0.74) enemyDef = ENEMY_TYPES[3];
-             else if (r > 0.60) enemyDef = ENEMY_TYPES[6];
-             else if (r > 0.45) enemyDef = ENEMY_TYPES[7];
-             else if (r > 0.30) enemyDef = ENEMY_TYPES[2];
-        }
-      } else {
-          const found = ENEMY_TYPES.find(e => e.type === type);
-          if (found) enemyDef = found;
-      }
-
-      const waveScaler = 1 + (statsRef.current.wave * 0.2);
-
-      enemiesRef.current.push({
-        id: Math.random().toString(),
-        x: x ?? Math.random() * (CANVAS_WIDTH - enemyDef.width),
-        y: y ?? -60,
-        width: enemyDef.width,
-        height: 24,
-        vx: (Math.random() - 0.5) * (enemyDef.type === 'ERROR_404' ? 4 : 0.5),
-        vy: enemyDef.speed + (statsRef.current.wave * 0.1),
-        color: enemyDef.color,
-        type: enemyDef.type as EnemyType,
-        hp: enemyDef.hp * waveScaler * scaleHP,
-        maxHp: enemyDef.hp * waveScaler * scaleHP,
-        text: enemyDef.text,
-        scoreValue: enemyDef.score,
-        age: 0,
-        flashTimer: 0
-      });
+  const spawnEnemy = (type: EnemySpawnType, x?: number, y?: number, scaleHP = 1) => {
+      enemiesRef.current.push(createEnemy(type, statsRef.current.wave, {
+        x,
+        y,
+        hpScale: scaleHP,
+      }));
   };
 
   const spawnBoss = () => {
-      const monolithDef = ENEMY_TYPES.find(e => e.type === 'MONOLITH') || ENEMY_TYPES[ENEMY_TYPES.length - 1];
-      enemiesRef.current.push({
-        id: 'boss-' + Math.random(),
-        x: CANVAS_WIDTH / 2 - monolithDef.width / 2,
-        y: -150,
-        width: monolithDef.width,
-        height: 60,
-        vx: 0,
-        vy: 2,
-        color: monolithDef.color,
-        type: 'MONOLITH',
-        hp: monolithDef.hp * (1 + statsRef.current.wave * 0.5),
-        maxHp: monolithDef.hp * (1 + statsRef.current.wave * 0.5),
-        text: monolithDef.text,
-        scoreValue: monolithDef.score,
-        age: 0,
-        flashTimer: 0
-      });
+      enemiesRef.current.push(createBoss(statsRef.current.wave));
       statsRef.current.bossActive = true;
       statsRef.current.lastLog = t('logBoss');
       addFloatingText(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, t('bossApproaching'), COLORS.error);
@@ -239,110 +145,47 @@ const GameEngine: React.FC<GameEngineProps> = ({
       sfxBossAppear();
   };
 
-  const pickPowerUpDrop = () => {
-      const totalWeight = POWER_UPS.reduce((sum, p) => sum + p.chance, 0);
-      let roll = Math.random() * totalWeight;
-      for (const p of POWER_UPS) {
-          roll -= p.chance;
-          if (roll <= 0) return p;
-      }
-      return null;
-  };
-
   const handleEnemyDefeat = (enemy: Enemy) => {
-      if (enemy.hp > 0) return;
+      const result = resolveEnemyDefeat(enemy, {
+        player: playerRef.current,
+        stats: statsRef.current,
+        spawnEnemy,
+        createExplosion,
+        addFloatingText,
+      });
+      if (!result.defeated) return;
 
-      const player = playerRef.current;
-      enemy.hp = 0;
-      createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.color, 12);
-      sfxExplosion();
-
-      if (enemy.type === 'MERGE_CONFLICT') {
-          spawnEnemy('BUG', enemy.x - 20, enemy.y, 0.5);
-          spawnEnemy('BUG', enemy.x + 20, enemy.y, 0.5);
-          addFloatingText(enemy.x, enemy.y, t('split'), COLORS.gitModified);
-      }
-
-      const comboMultiplier = 1 + (statsRef.current.combo * 0.1);
-      statsRef.current.score += Math.floor(enemy.scoreValue * comboMultiplier);
-      statsRef.current.bugsFixed++;
-      statsRef.current.combo++;
-      statsRef.current.maxCombo = Math.max(statsRef.current.maxCombo, statsRef.current.combo);
-      statsRef.current.comboTimer = COMBO_TIMER_MAX;
-
-      player.specialCharge = Math.min(MAX_SPECIAL_CHARGE, player.specialCharge + SPECIAL_CHARGE_PER_KILL);
-
-      if (statsRef.current.combo > 1 && statsRef.current.combo % 5 === 0) {
-          addFloatingText(player.x, player.y - 50, t('comboLabel', { n: statsRef.current.combo }), COLORS.warning);
-      }
-
-      if (enemy.type === 'MONOLITH') {
-          statsRef.current.bossActive = false;
-          statsRef.current.wave++;
-          statsRef.current.levelProgress = 0;
-          statsRef.current.levelTarget += 5;
+      if (result.clearEnemyProjectiles) {
           enemyProjectilesRef.current = [];
-          statsRef.current.lastLog = t('logBossKilled', { wave: statsRef.current.wave - 1 });
-          addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('deploySuccess'), COLORS.class);
-          player.hp = player.maxHp;
-          player.ammo = player.maxAmmo;
-          shakeRef.current = 20;
-          sfxWaveClear();
-
-          // Trigger wave upgrade screen
-          const choices = pickUpgradeChoices();
-          statsRef.current.pendingUpgrades = choices;
+      }
+      if (result.droppedPowerUp) {
+          powerUpsRef.current.push(result.droppedPowerUp);
+      }
+      if (result.shake > 0) {
+          shakeRef.current = result.shake;
+      }
+      if (result.upgradeChoices.length > 0) {
+          statsRef.current.pendingUpgrades = result.upgradeChoices;
           syncStatsToUI();
           setGameState(GameState.UPGRADE);
-      } else if (!statsRef.current.bossActive) {
-          statsRef.current.levelProgress++;
-      }
-
-      if (Math.random() < 0.15) {
-          const powerUp = pickPowerUpDrop();
-          if (powerUp) {
-              powerUpsRef.current.push({
-                  id: Math.random().toString(),
-                  x: enemy.x + enemy.width / 2 - 12,
-                  y: enemy.y,
-                  width: 24, height: 24,
-                  vx: 0, vy: 2,
-                  color: powerUp.color,
-                  type: powerUp.type,
-                  icon: powerUp.icon
-              });
-          }
       }
   };
 
   const triggerRefactorUltimate = () => {
-      if (playerRef.current.specialCharge < MAX_SPECIAL_CHARGE) return;
-
-      playerRef.current.specialCharge = 0;
-      shakeRef.current = 30;
-      statsRef.current.lastLog = t('logRefactor');
-      enemyProjectilesRef.current = [];
-
-      // BUG FIX #2: Snapshot to avoid modifying the array while iterating
-      // (MERGE_CONFLICT defeat → spawnEnemy pushes new enemies into the same array)
-      const snapshot = [...enemiesRef.current];
-      snapshot.forEach(e => {
-          e.hp -= 50;
-          e.flashTimer = 10;
-          createExplosion(e.x + e.width / 2, e.y + e.height / 2, COLORS.accent, 5);
-          handleEnemyDefeat(e);
+      const result = activateRefactorUltimate({
+          player: playerRef.current,
+          stats: statsRef.current,
+          enemies: enemiesRef.current,
+          createExplosion,
+          addFloatingText,
+          onActivate: () => {
+              shakeRef.current = 30;
+              enemyProjectilesRef.current = [];
+          },
+          handleEnemyDefeat,
       });
-
-      particlesRef.current.push({
-          id: 'shockwave',
-          x: playerRef.current.x + playerRef.current.width / 2,
-          y: playerRef.current.y + playerRef.current.height / 2,
-          width: 0, height: 0, vx: 0, vy: 0,
-          color: COLORS.accent, life: 1.0, maxLife: 1.0, alpha: 0.8, char: ''
-      });
-
-      addFloatingText(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, t('refactorComplete'), COLORS.class);
-      sfxUltimate();
+      if (!result.activated) return;
+      if (result.particle) particlesRef.current.push(result.particle);
   };
 
   // ── Reset ─────────────────────────────────────────────────────────────────
@@ -368,47 +211,17 @@ const GameEngine: React.FC<GameEngineProps> = ({
   }, [syncStatsToUI]);
 
   // ── Input setup ───────────────────────────────────────────────────────────
+  useGameInput(keysRef, setGameState);
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (shouldIgnoreKeyboardEvent(e.target)) return;
-      if (shouldTogglePause(e.code, e.repeat)) {
-        setGameState(prev => {
-          if (prev === GameState.PLAYING) return GameState.PAUSED;
-          if (prev === GameState.PAUSED) return GameState.PLAYING;
-          return prev;
-        });
-      }
-      keysRef.current.add(e.code);
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (shouldIgnoreKeyboardEvent(e.target)) return;
-      keysRef.current.delete(e.code);
-    };
-
-    // BUG FIX #1: Clear held keys on window blur to prevent stuck-key movement
-    const handleBlur = () => keysRef.current.clear();
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    window.addEventListener('blur', handleBlur);
-    setMounted(true);
-
     bgParticlesRef.current = Array.from({ length: 20 }, () => ({
-            x: Math.random() * CANVAS_WIDTH,
-            y: Math.random() * CANVAS_HEIGHT,
-            text: BACKGROUND_STRINGS[Math.floor(Math.random() * BACKGROUND_STRINGS.length)],
-            opacity: Math.random() * 0.1 + 0.02,
-            speed: Math.random() * 1 + 0.5
+      x: Math.random() * CANVAS_WIDTH,
+      y: Math.random() * CANVAS_HEIGHT,
+      text: BACKGROUND_STRINGS[Math.floor(Math.random() * BACKGROUND_STRINGS.length)],
+      opacity: Math.random() * 0.1 + 0.02,
+      speed: Math.random() * 1 + 0.5,
     }));
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      window.removeEventListener('blur', handleBlur);
-      cancelAnimationFrame(frameIdRef.current);
-    };
-  }, [setGameState]);
+  }, []);
 
   // ── Game Loop ─────────────────────────────────────────────────────────────
   const gameLoop = useCallback((timestamp: number) => {
@@ -421,39 +234,15 @@ const GameEngine: React.FC<GameEngineProps> = ({
         // doesn't inherit a large deltaTime spike from the idle period.
         lastTimeRef.current = timestamp;
 
-        ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        if (gameState === GameState.PAUSED) {
-          ctx.fillStyle = '#fff';
-          ctx.font = `bold 40px ${GAME_FONT}`;
-          ctx.textAlign = 'center';
-          ctx.fillText(t('breakpointHit'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-          ctx.font = `20px ${GAME_FONT}`;
-          ctx.fillStyle = '#cccccc';
-          ctx.fillText(t('pressToContinue'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
-          ctx.textAlign = 'left';
-        }
-        // UPGRADE state: React overlay in App.tsx handles the actual UI
-        ctx.restore();
+        renderPausedFrame(ctx, gameState === GameState.PAUSED);
         frameIdRef.current = requestAnimationFrame(gameLoop);
         return;
     }
 
     if (gameState !== GameState.PLAYING) {
         if (gameState === GameState.START) {
-             ctx.fillStyle = COLORS.bg;
-             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             ctx.fillStyle = '#2e2e2e';
-             ctx.font = `14px ${GAME_FONT}`;
-             bgParticlesRef.current.forEach(p => {
-                 p.y += p.speed;
-                 if (p.y > CANVAS_HEIGHT) { p.y = -20; p.x = Math.random() * CANVAS_WIDTH; }
-                 ctx.globalAlpha = p.opacity;
-                 ctx.fillText(p.text, p.x, p.y);
-             });
-             ctx.globalAlpha = 1.0;
-             frameIdRef.current = requestAnimationFrame(gameLoop);
+          renderStartFrame(ctx, bgParticlesRef.current);
+          frameIdRef.current = requestAnimationFrame(gameLoop);
         }
         return;
     }
@@ -476,88 +265,22 @@ const GameEngine: React.FC<GameEngineProps> = ({
         }
     });
 
-    // 2. Player physics
-    const sensitivity = Math.max(0.5, Math.min(2, movementSensitivity || 1));
-    const currentSpeed = (player.speedBuff > 0 ? PLAYER_BOOST_SPEED : PLAYER_SPEED) * sensitivity;
-    if (player.speedBuff > 0) player.speedBuff = Math.max(0, player.speedBuff - frameScale);
-    if (player.shield > 0)    player.shield    = Math.max(0, player.shield - frameScale);
-    if (player.invulnerable > 0) player.invulnerable = Math.max(0, player.invulnerable - frameScale);
-
-    // Combo decay
-    if (statsRef.current.combo > 0) {
-        statsRef.current.comboTimer = Math.max(0, statsRef.current.comboTimer - frameScale);
-        if (statsRef.current.comboTimer <= 0) {
-            statsRef.current.combo = 0;
-            statsRef.current.lastLog = t('logComboBreak');
-        }
-    }
-
-    // Ultimate input
-    if ((keysRef.current.has('KeyR') || keysRef.current.has('ShiftLeft')) && player.specialCharge >= MAX_SPECIAL_CHARGE) {
-        triggerRefactorUltimate();
-    }
-
-    if (keysRef.current.has('ArrowLeft') || keysRef.current.has('KeyA')) player.x -= currentSpeed * frameScale;
-    if (keysRef.current.has('ArrowRight') || keysRef.current.has('KeyD')) player.x += currentSpeed * frameScale;
-    if (keysRef.current.has('ArrowUp')   || keysRef.current.has('KeyW')) player.y -= currentSpeed * frameScale;
-    if (keysRef.current.has('ArrowDown') || keysRef.current.has('KeyS')) player.y += currentSpeed * frameScale;
-    player.x = Math.max(0, Math.min(CANVAS_WIDTH - player.width, player.x));
-    player.y = Math.max(0, Math.min(CANVAS_HEIGHT - player.height, player.y));
-
-    // 3. Reload / Ammo
-    const reloadDuration = fastGcRef.current ? RELOAD_TIME * 0.7 : RELOAD_TIME;
-    if (player.isReloading) {
-        player.reloadTimer -= frameScale;
-        if (player.reloadTimer <= 0) {
-            player.isReloading = false;
-            player.ammo = player.maxAmmo;
-            addFloatingText(player.x, player.y - 20, t('gcComplete'), COLORS.class);
-        }
-    } else {
-        if (!keysRef.current.has('Space') && player.ammo < player.maxAmmo) {
-            player.ammo = regenerateAmmo(player.ammo, player.maxAmmo, AMMO_REGEN, frameScale);
-        }
-    }
-
-    // 4. Shooting
-    const fireRate = overclockRef.current ? 80 : (player.weaponLevel >= 3 ? 100 : 150);
-    const canShoot = !player.isReloading && player.ammo >= 1;
-
-    if (keysRef.current.has('Space') && timestamp - lastFireTimeRef.current > fireRate) {
-        if (canShoot) {
-            player.ammo -= 1;
-            if (player.ammo <= 0) {
-                player.isReloading = true;
-                player.reloadTimer = reloadDuration;
-                statsRef.current.lastLog = t('logGcPause');
-                addFloatingText(player.x, player.y - 40, t('gcPause'), COLORS.warning);
-            }
-
-            projectilesRef.current.push({
-                id: Math.random().toString(),
-                x: player.x + player.width / 2 - 2, y: player.y,
-                width: 4, height: 12, vx: 0, vy: -12, color: COLORS.keyword, damage: 10, type: 'DEFAULT'
-            });
-
-            if (player.weaponLevel >= 2) {
-                projectilesRef.current.push(
-                    { id: Math.random().toString(), x: player.x,              y: player.y + 10, width: 3, height: 10, vx: -1, vy: -10, color: COLORS.function, damage: 5, type: 'TS_BEAM' },
-                    { id: Math.random().toString(), x: player.x + player.width, y: player.y + 10, width: 3, height: 10, vx:  1, vy: -10, color: COLORS.function, damage: 5, type: 'TS_BEAM' }
-                );
-            }
-
-            if (player.weaponLevel >= 4) {
-                projectilesRef.current.push(
-                    { id: Math.random().toString(), x: player.x,              y: player.y + 10, width: 4, height: 8, vx: -4, vy: -8, color: COLORS.string, damage: 8, type: 'SUDO_BLAST' },
-                    { id: Math.random().toString(), x: player.x + player.width, y: player.y + 10, width: 4, height: 8, vx:  4, vy: -8, color: COLORS.string, damage: 8, type: 'SUDO_BLAST' }
-                );
-            }
-
-            statsRef.current.linesOfCode++;
-            lastFireTimeRef.current = timestamp;
-            sfxShoot();
-        }
-    }
+    // 2-4. Player movement, timers, reload, ultimate, and shooting
+    const playerResult = updatePlayerSystem({
+      player,
+      stats: statsRef.current,
+      keys: keysRef.current,
+      frameScale,
+      timestamp,
+      lastFireTime: lastFireTimeRef.current,
+      movementSensitivity,
+      fastGc: fastGcRef.current,
+      overclock: overclockRef.current,
+      addFloatingText,
+      triggerUltimate: triggerRefactorUltimate,
+    });
+    lastFireTimeRef.current = playerResult.lastFireTime;
+    projectilesRef.current.push(...playerResult.projectiles);
 
     // 5. Boss / Enemy spawning
     if (!statsRef.current.bossActive && statsRef.current.levelProgress >= statsRef.current.levelTarget) {
@@ -571,209 +294,40 @@ const GameEngine: React.FC<GameEngineProps> = ({
     }
 
     // 6. Move projectiles
-    projectilesRef.current.forEach(p => { p.x += p.vx * frameScale; p.y += p.vy * frameScale; });
-    projectilesRef.current = projectilesRef.current.filter(p => p.y > -50 && p.y < CANVAS_HEIGHT + 50);
-
-    enemyProjectilesRef.current.forEach(p => { p.x += p.vx * frameScale; p.y += p.vy * frameScale; });
-    enemyProjectilesRef.current = enemyProjectilesRef.current.filter(p => p.y < CANVAS_HEIGHT + 50);
+    projectilesRef.current = advancePlayerProjectiles(projectilesRef.current, frameScale);
+    enemyProjectilesRef.current = advanceEnemyProjectiles(enemyProjectilesRef.current, frameScale);
 
     // 7. Move enemies & AI
     enemiesRef.current.forEach(enemy => {
-      const previousAge = enemy.age;
-      enemy.age += frameScale;
-      if (enemy.flashTimer > 0) enemy.flashTimer = Math.max(0, enemy.flashTimer - frameScale);
-
-      if (enemy.type === 'INFINITE_LOOP') {
-          enemy.x += Math.cos(enemy.age * 0.1) * 3 * frameScale;
-          enemy.y += enemy.vy * frameScale;
-      } else if (enemy.type === 'RACE_CONDITION') {
-          enemy.y += enemy.vy * frameScale;
-          if (crossedFrameInterval(previousAge, enemy.age, 60) && Math.random() > 0.5) {
-              createExplosion(enemy.x + enemy.width / 2, enemy.y, enemy.color, 3);
-              enemy.x = Math.random() * (CANVAS_WIDTH - enemy.width);
-          }
-      } else if (enemy.type === 'MERGE_CONFLICT') {
-          enemy.x += Math.sin(enemy.age * 0.05) * frameScale;
-          enemy.y += enemy.vy * frameScale;
-      } else if (enemy.type === 'MEMORY_LEAK') {
-          if (crossedFrameInterval(previousAge, enemy.age, 40)) {
-              enemy.width += 2; enemy.height += 1; enemy.x -= 1;
-          }
-          enemy.y += enemy.vy * frameScale;
-      } else if (enemy.type === 'SPAGHETTI') {
-          enemy.x += Math.sin(enemy.age * 0.1) * 2 * frameScale;
-          enemy.y += enemy.vy * frameScale;
-      } else if (enemy.type === 'MONOLITH') {
-          if (enemy.y < 60) {
-              enemy.y += enemy.vy * frameScale;
-          } else {
-              const isRage = enemy.hp < enemy.maxHp * 0.5;
-              const hoverSpeed = isRage ? 0.06 : 0.02;
-              const moveSpeed  = isRage ? 3 : 1;
-
-              enemy.y = 60 + Math.sin(enemy.age * hoverSpeed) * 20;
-              const dx = (player.x + player.width / 2) - (enemy.x + enemy.width / 2);
-              if (dx >  20) enemy.x += moveSpeed * 0.5 * frameScale;
-              if (dx < -20) enemy.x -= moveSpeed * 0.5 * frameScale;
-              enemy.x = Math.max(0, Math.min(CANVAS_WIDTH - enemy.width, enemy.x));
-
-              if (isRage && crossedFrameInterval(previousAge, enemy.age, 10)) {
-                  enemy.color = enemy.color === COLORS.error ? COLORS.keyword : COLORS.error;
-              }
-
-              // Phase 1: single tracking projectile
-              if (crossedFrameInterval(previousAge, enemy.age, isRage ? 40 : 90)) {
-                  enemyProjectilesRef.current.push({
-                      id: 'p-' + Math.random(),
-                      x: enemy.x + enemy.width / 2, y: enemy.y + enemy.height,
-                      width: 20, height: 20,
-                      vx: (player.x - (enemy.x + enemy.width / 2)) * 0.02, vy: 5,
-                      color: COLORS.warning, damage: 15, label: '⚠'
-                  });
-              }
-
-              // Phase 2 (RAGE): Spread shotgun burst every 70 frames
-              if (isRage && crossedFrameInterval(previousAge, enemy.age, 70)) {
-                  const cx = enemy.x + enemy.width / 2;
-                  const cy = enemy.y + enemy.height;
-                  [-3, 0, 3].forEach(offsetVx => {
-                      enemyProjectilesRef.current.push({
-                          id: 'sp-' + Math.random(),
-                          x: cx, y: cy,
-                          width: 14, height: 14,
-                          vx: offsetVx, vy: 6,
-                          color: COLORS.error, damage: 10, label: '✖'
-                      });
-                  });
-              }
-
-              // Minion spawns — rage doubles frequency
-              if (crossedFrameInterval(previousAge, enemy.age, isRage ? 150 : 300)) {
-                  spawnEnemy('BUG', enemy.x, enemy.y + 80);
-                  spawnEnemy('SYNTAX_ERROR', enemy.x + enemy.width, enemy.y + 80);
-              }
-          }
-      } else {
-          enemy.x += enemy.vx * frameScale;
-          enemy.y += enemy.vy * frameScale;
-      }
-
-      // Player ↔ enemy body collision
-      if (
-        player.x < enemy.x + enemy.width  &&
-        player.x + player.width > enemy.x &&
-        player.y < enemy.y + enemy.height &&
-        player.y + player.height > enemy.y
-      ) {
-        if (player.shield > 0) {
-             enemy.hp = applyDamage(enemy.hp, 10);
-             createExplosion(enemy.x, enemy.y, '#0db7ed', 5);
-             addFloatingText(player.x, player.y - 20, t('blocked'), '#0db7ed');
-             handleEnemyDefeat(enemy);
-        } else if (player.invulnerable <= 0) {
-          player.hp -= 20;
-          player.invulnerable = 60;
-          player.weaponLevel = Math.max(1, player.weaponLevel - 1);
-          statsRef.current.combo = 0;
-          createExplosion(player.x, player.y, COLORS.error, 15);
-          shakeRef.current = 15;
-          addFloatingText(player.x, player.y - 40, t('exception'), COLORS.error);
-           sfxPlayerHit();
-           if (player.hp <= 0) triggerGameOver();
-           if (enemy.type !== 'MONOLITH') enemy.hp = 0;
-        }
-      }
-    });
-
-    // Player ↔ enemy projectiles
-    enemyProjectilesRef.current.forEach(p => {
-        if (
-            player.invulnerable <= 0 &&
-            player.x < p.x + p.width  &&
-            player.x + player.width > p.x &&
-            player.y < p.y + p.height &&
-            player.y + player.height > p.y
-        ) {
-            if (player.shield > 0) {
-                addFloatingText(player.x, player.y - 20, t('blocked'), '#0db7ed');
-            } else {
-                player.hp -= p.damage;
-                player.invulnerable = 40;
-                statsRef.current.combo = 0;
-                shakeRef.current = 15;
-                createExplosion(player.x, player.y, COLORS.error, 8);
-                addFloatingText(player.x, player.y - 30, t('dmgLabel', { n: p.damage }), COLORS.error);
-                sfxPlayerHit();
-                if (player.hp <= 0) triggerGameOver();
-            }
-            p.y = CANVAS_HEIGHT + 100;
-        }
-    });
-
-    // Bullet ↔ enemy
-    projectilesRef.current.forEach(p => {
-      if (p.damage <= 0) return;
-      enemiesRef.current.forEach(e => {
-        if (e.hp <= 0) return;
-        if (
-          p.x < e.x + e.width && p.x + p.width > e.x &&
-          p.y < e.y + e.height && p.y + p.height > e.y
-        ) {
-          e.hp -= p.damage;
-          e.flashTimer = 3;
-          p.damage = 0;
-          createExplosion(p.x, p.y, COLORS.text, 1);
-          sfxHit();
-          handleEnemyDefeat(e);
-        }
+      updateEnemy(enemy, {
+        player,
+        frameScale,
+        enemyProjectiles: enemyProjectilesRef.current,
+        spawnEnemy,
+        createExplosion,
       });
     });
 
-    // Cleanup dead entities
-    projectilesRef.current = projectilesRef.current.filter(p => p.damage > 0);
-    enemiesRef.current     = enemiesRef.current.filter(e => e.y < CANVAS_HEIGHT && e.hp > 0);
-
-    particlesRef.current.forEach(p => {
-      p.x += p.vx * frameScale;
-      p.y += p.vy * frameScale;
-      p.life -= 0.02 * frameScale;
-      p.alpha = p.life;
+    const combatResult = resolveCombat({
+      frameScale,
+      player,
+      stats: statsRef.current,
+      enemies: enemiesRef.current,
+      projectiles: projectilesRef.current,
+      enemyProjectiles: enemyProjectilesRef.current,
+      powerUps: powerUpsRef.current,
+      addFloatingText,
+      createExplosion,
+      handleEnemyDefeat,
+      triggerGameOver,
     });
-    particlesRef.current = particlesRef.current.filter(p => p.life > 0);
+    enemiesRef.current = combatResult.enemies;
+    projectilesRef.current = combatResult.projectiles;
+    powerUpsRef.current = combatResult.powerUps;
+    if (combatResult.shake > 0) shakeRef.current = combatResult.shake;
 
-    floatingTextsRef.current.forEach(t => { t.y += t.vy * frameScale; t.life -= frameScale; });
-    floatingTextsRef.current = floatingTextsRef.current.filter(t => t.life > 0);
-
-    // Power-ups
-    powerUpsRef.current.forEach(p => {
-        p.y += 2 * frameScale;
-        if (
-            player.x < p.x + p.width  && player.x + player.width > p.x &&
-            player.y < p.y + p.height && player.y + player.height > p.y
-        ) {
-            if (p.type === 'COFFEE') {
-                player.speedBuff = 600;
-                addFloatingText(player.x, player.y, t('speedUp'), p.color);
-                sfxPowerUp();
-            } else if (p.type === 'COPILOT') {
-                player.weaponLevel = Math.min(5, player.weaponLevel + 1);
-                addFloatingText(player.x, player.y, t('weaponUp'), p.color);
-                sfxPowerUp();
-            } else if (p.type === 'DOCKER') {
-                player.shield = 300;
-                addFloatingText(player.x, player.y, t('shield'), p.color);
-                sfxPowerUp();
-            } else if (p.type === 'HOTFIX') {
-                // New heal pickup
-                const healed = Math.min(player.maxHp - player.hp, 30);
-                player.hp = Math.min(player.maxHp, player.hp + 30);
-                addFloatingText(player.x, player.y, t('hpGain', { n: healed }), p.color);
-                sfxHeal();
-            }
-            p.y = CANVAS_HEIGHT + 100;
-        }
-    });
-    powerUpsRef.current = powerUpsRef.current.filter(p => p.y < CANVAS_HEIGHT);
+    particlesRef.current = advanceParticles(particlesRef.current, frameScale);
+    floatingTextsRef.current = advanceFloatingTexts(floatingTextsRef.current, frameScale);
 
     // Throttled stats sync
     if (timestamp - lastStatsSyncTimeRef.current >= 100) {
@@ -782,218 +336,21 @@ const GameEngine: React.FC<GameEngineProps> = ({
     }
 
     // ── RENDER ──────────────────────────────────────────────────────────────
-    ctx.save();
-    if (shakeRef.current > 0) {
-        ctx.translate(
-          (Math.random() - 0.5) * shakeRef.current,
-          (Math.random() - 0.5) * shakeRef.current
-        );
-        shakeRef.current *= Math.pow(0.9, frameScale);
-        if (shakeRef.current < 0.5) shakeRef.current = 0;
-    }
-
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // Background code rain
-    ctx.font = `12px ${GAME_FONT}`;
-    bgParticlesRef.current.forEach(p => {
-        ctx.fillStyle = '#2e2e2e';
-        ctx.globalAlpha = p.opacity;
-        ctx.fillText(p.text, p.x, p.y);
+    shakeRef.current = renderScene({
+      ctx,
+      timestamp,
+      frameScale,
+      player,
+      stats: statsRef.current,
+      backgroundParticles: bgParticlesRef.current,
+      enemyProjectiles: enemyProjectilesRef.current,
+      enemies: enemiesRef.current,
+      projectiles: projectilesRef.current,
+      powerUps: powerUpsRef.current,
+      particles: particlesRef.current,
+      floatingTexts: floatingTextsRef.current,
+      shake: shakeRef.current,
     });
-    ctx.globalAlpha = 1.0;
-
-    // Large combo watermark
-    if (statsRef.current.combo >= 5) {
-        ctx.save();
-        ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        ctx.globalAlpha = 0.05;
-        ctx.fillStyle = COLORS.text;
-        ctx.font = `bold 120px ${GAME_FONT}`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`${statsRef.current.combo}x`, 0, 0);
-        ctx.restore();
-    }
-
-    // Grid
-    ctx.strokeStyle = '#2e2e2e';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < CANVAS_HEIGHT; i += 40) {
-       ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(CANVAS_WIDTH, i); ctx.stroke();
-    }
-
-    // Player ship
-    if (player.invulnerable <= 0 || Math.floor(Date.now() / 50) % 2 === 0) {
-        ctx.save();
-        ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
-
-        if (player.shield > 0) {
-            ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2);
-            ctx.strokeStyle = '#0db7ed'; ctx.lineWidth = 2; ctx.stroke();
-        }
-        if (player.specialCharge >= MAX_SPECIAL_CHARGE) {
-             const pulsate = Math.sin(timestamp * 0.01) * 5;
-             ctx.beginPath(); ctx.arc(0, 0, 40 + pulsate, 0, Math.PI * 2);
-             ctx.strokeStyle = COLORS.class; ctx.lineWidth = 1;
-             ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
-        }
-
-        ctx.beginPath();
-        ctx.moveTo(0, -20); ctx.lineTo(15, 15); ctx.lineTo(0, 10); ctx.lineTo(-15, 15);
-        ctx.closePath();
-        ctx.fillStyle = player.speedBuff > 0 ? COLORS.warning : COLORS.statusBar;
-        ctx.fill();
-
-        const ammoPct = player.ammo / player.maxAmmo;
-        ctx.fillStyle = '#333'; ctx.fillRect(-20, 25, 40, 4);
-        ctx.fillStyle = player.isReloading ? COLORS.error : COLORS.class;
-        ctx.fillRect(-20, 25, 40 * ammoPct, 4);
-        ctx.restore();
-    }
-
-    // HP HUD (compact corner)
-    const hpPct = Math.max(0, player.hp / player.maxHp);
-    const hpHudX = 12, hpHudY = 12, hpBarWidth = 92;
-    ctx.save();
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = 'rgba(30,30,30,0.72)';
-    ctx.fillRect(hpHudX, hpHudY, 148, 18);
-    ctx.strokeStyle = '#3c3c3c';
-    ctx.strokeRect(hpHudX, hpHudY, 148, 18);
-    ctx.fillStyle = '#858585';
-    ctx.font = `10px ${GAME_FONT}`;
-    ctx.fillText(t('hpLabel'), hpHudX + 6, hpHudY + 12);
-    ctx.fillStyle = '#333333';
-    ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth, 8);
-    ctx.fillStyle = hpPct > 0.6 ? COLORS.class : hpPct > 0.3 ? COLORS.warning : COLORS.error;
-    ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth * hpPct, 8);
-    ctx.fillStyle = '#cccccc';
-    ctx.fillText(`${Math.max(0, Math.ceil(player.hp))}/${player.maxHp}`, hpHudX + 120, hpHudY + 12);
-    ctx.restore();
-
-    // Enemy projectiles
-    ctx.font = `20px ${GAME_FONT}`;
-    enemyProjectilesRef.current.forEach(p => {
-        ctx.fillStyle = p.color;
-        ctx.fillText(p.label, p.x - 10, p.y);
-    });
-
-    // Enemies
-    enemiesRef.current.forEach(e => {
-      ctx.save();
-      ctx.fillStyle = e.flashTimer > 0 ? '#ffffff' : e.color;
-      ctx.font = `bold ${e.type === 'MONOLITH' ? '24px' : '16px'} ${GAME_FONT}`;
-      ctx.fillText(e.text, e.x, e.y + 20);
-      ctx.restore();
-
-      const pct = e.hp / e.maxHp;
-      if (pct < 1) {
-        ctx.fillStyle = '#333'; ctx.fillRect(e.x, e.y - 5, e.width, 3);
-        ctx.fillStyle = e.flashTimer > 0 ? '#ffffff' : e.color;
-        ctx.fillRect(e.x, e.y - 5, e.width * pct, 3);
-      }
-    });
-
-    // Player projectiles
-    projectilesRef.current.forEach(p => {
-      ctx.fillStyle = p.color;
-      if (p.type === 'SUDO_BLAST') {
-          ctx.font = `10px ${GAME_FONT}`;
-          ctx.fillText('sudo', p.x - 5, p.y);
-      } else {
-          ctx.fillRect(p.x, p.y, p.width, p.height);
-      }
-    });
-
-    // Power-up icons
-    ctx.font = '20px sans-serif';
-    powerUpsRef.current.forEach(p => ctx.fillText(p.icon, p.x, p.y + 20));
-
-    // Particles
-    particlesRef.current.forEach(p => {
-      if (p.id === 'shockwave') {
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, (1 - p.life) * 600, 0, Math.PI * 2);
-          ctx.strokeStyle = p.color;
-          ctx.lineWidth = 10 * p.life;
-          ctx.stroke();
-          ctx.restore();
-      } else {
-          ctx.globalAlpha = p.alpha;
-          ctx.fillStyle = p.color;
-          ctx.fillText(p.char, p.x, p.y);
-      }
-    });
-    ctx.globalAlpha = 1.0;
-
-    // Floating texts
-    ctx.font = `bold 14px ${GAME_FONT}`;
-    floatingTextsRef.current.forEach(t => {
-        ctx.fillStyle = t.color;
-        ctx.fillText(t.text, t.x, t.y);
-    });
-
-    // Boss HP bar
-    const monolith = enemiesRef.current.find(e => e.type === 'MONOLITH');
-    if (monolith) {
-        const barWidth = CANVAS_WIDTH * 0.6;
-        const barX = (CANVAS_WIDTH - barWidth) / 2;
-        const pct = Math.max(0, monolith.hp / monolith.maxHp);
-        const isRage = monolith.hp < monolith.maxHp * 0.5;
-
-        ctx.fillStyle = '#333'; ctx.fillRect(barX, 20, barWidth, 15);
-        ctx.fillStyle = isRage ? COLORS.error : '#f14c4c';
-        ctx.fillRect(barX, 20, barWidth * pct, 15);
-        ctx.strokeStyle = isRage ? COLORS.warning : '#fff';
-        ctx.strokeRect(barX, 20, barWidth, 15);
-        ctx.fillStyle = isRage ? COLORS.warning : '#fff';
-        ctx.textAlign = 'center';
-        ctx.font = `bold 12px ${GAME_FONT}`;
-        ctx.fillText(
-          isRage
-            ? t('bossBarPhase2', { wave: statsRef.current.wave })
-            : t('bossBar', { wave: statsRef.current.wave }),
-          CANVAS_WIDTH / 2, 15
-        );
-        ctx.textAlign = 'left';
-    }
-
-    // Damage vignette
-    if (player.invulnerable > 0 && player.invulnerable % 10 > 5) {
-        const grad = ctx.createRadialGradient(
-          CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_HEIGHT / 3,
-          CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_HEIGHT
-        );
-        grad.addColorStop(0, 'rgba(255,0,0,0)');
-        grad.addColorStop(1, 'rgba(255,0,0,0.3)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    }
-
-    // CRT scanlines
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    for (let i = 0; i < CANVAS_HEIGHT; i += 4) ctx.fillRect(0, i, CANVAS_WIDTH, 1);
-
-    // Minimap
-    const mmW = 60, mmScale = 0.08, mmX = CANVAS_WIDTH - mmW;
-    ctx.fillStyle = 'rgba(30,30,30,0.8)';
-    ctx.fillRect(mmX, 0, mmW, CANVAS_HEIGHT);
-    ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(mmX, 0); ctx.lineTo(mmX, CANVAS_HEIGHT); ctx.stroke();
-
-    enemiesRef.current.forEach(e => {
-        ctx.fillStyle = e.type === 'MONOLITH' ? COLORS.error : COLORS.warning;
-        ctx.fillRect(mmX + e.x * mmScale, e.y * mmScale, Math.max(2, e.width * mmScale), Math.max(2, e.height * mmScale));
-    });
-    ctx.fillStyle = COLORS.statusBar;
-    ctx.fillRect(mmX + player.x * mmScale, player.y * mmScale, 4, 4);
-    ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    ctx.fillRect(mmX, 0, mmW, CANVAS_HEIGHT * mmScale * 3);
-
-    ctx.restore();
 
     frameIdRef.current = requestAnimationFrame(gameLoop);
   // Engine helpers mutate refs only. Adding their render-local identities here would
@@ -1002,23 +359,18 @@ const GameEngine: React.FC<GameEngineProps> = ({
   }, [gameState, movementSensitivity, onStatsUpdate, setGameState, syncStatsToUI, triggerGameOver]);
 
   useEffect(() => {
-    if (mounted) {
-      const shouldReset = gameState === GameState.START || restartToken !== lastRestartTokenRef.current;
-      if (shouldReset) {
-        resetGame();
-        lastRestartTokenRef.current = restartToken;
-      }
-      frameIdRef.current = requestAnimationFrame(gameLoop);
+    const shouldReset = gameState === GameState.START || restartToken !== lastRestartTokenRef.current;
+    if (shouldReset) {
+      resetGame();
+      lastRestartTokenRef.current = restartToken;
     }
+    frameIdRef.current = requestAnimationFrame(gameLoop);
+
     return () => cancelAnimationFrame(frameIdRef.current);
-  }, [gameState, gameLoop, mounted, resetGame, restartToken]);
+  }, [gameState, gameLoop, resetGame, restartToken]);
 
   const handleTouchControl = useCallback((code: TouchControlCode, pressed: boolean) => {
-    if (pressed) {
-      keysRef.current.add(code);
-    } else {
-      keysRef.current.delete(code);
-    }
+    setControlPressed(keysRef, code, pressed);
   }, []);
 
   return (

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PLAYFIELD_WIDTH } from '../constants';
 import type { Enemy, Player } from '../types';
 import { createInitialPlayer } from '../utils/gameState';
 import { updateEnemy } from './updateEnemy';
@@ -47,6 +48,17 @@ describe('updateEnemy', () => {
     expect(enemy.x).toBe(12);
     expect(enemy.y).toBe(23);
     expect(enemy.age).toBe(1);
+  });
+
+  it('keeps moving enemies out of the reserved minimap rail', () => {
+    const enemy = createEnemy({
+      x: PLAYFIELD_WIDTH - 30,
+      width: 30,
+      vx: 2,
+    });
+    update(enemy);
+
+    expect(enemy.x).toBe(PLAYFIELD_WIDTH - enemy.width);
   });
 
   it('grows a memory leak when it crosses its interval', () => {

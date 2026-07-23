@@ -1,4 +1,10 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, COLORS, MAX_SPECIAL_CHARGE } from '../constants';
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  COLORS,
+  MAX_SPECIAL_CHARGE,
+  PLAYFIELD_WIDTH,
+} from '../constants';
 import type {
   Enemy,
   EnemyProjectile,
@@ -10,6 +16,7 @@ import type {
   Projectile,
 } from '../types';
 import { t } from '../utils/i18n';
+import { renderMinimap } from './minimap';
 
 const GAME_FONT = '"Cascadia Code", Consolas, monospace';
 
@@ -37,6 +44,50 @@ interface RenderSceneInput {
   shake: number;
 }
 
+function renderHealthHud(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+): void {
+  const hpPct = Math.max(0, player.hp / player.maxHp);
+  const hudX = 12;
+  const hudY = 12;
+  const hudWidth = 198;
+  const hudHeight = 22;
+  const barX = hudX + 38;
+  const barY = hudY + 6;
+  const barWidth = 88;
+  const barHeight = 10;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(37,37,38,0.96)';
+  ctx.fillRect(hudX, hudY, hudWidth, hudHeight);
+  ctx.strokeStyle = '#454545';
+  ctx.strokeRect(hudX + 0.5, hudY + 0.5, hudWidth - 1, hudHeight - 1);
+
+  ctx.font = `600 11px ${GAME_FONT}`;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#b8b8b8';
+  ctx.fillText(t('hpLabel'), hudX + 7, hudY + hudHeight / 2 + 0.5);
+
+  ctx.fillStyle = '#333333';
+  ctx.fillRect(barX, barY, barWidth, barHeight);
+  ctx.fillStyle = hpPct > 0.6
+    ? COLORS.class
+    : hpPct > 0.3
+      ? COLORS.warning
+      : COLORS.error;
+  ctx.fillRect(barX, barY, Math.round(barWidth * hpPct), barHeight);
+
+  ctx.fillStyle = '#e7e7e7';
+  ctx.textAlign = 'right';
+  ctx.fillText(
+    `${Math.max(0, Math.ceil(player.hp))}/${player.maxHp}`,
+    hudX + hudWidth - 7,
+    hudY + hudHeight / 2 + 0.5,
+  );
+  ctx.restore();
+}
+
 export function renderPausedFrame(ctx: CanvasRenderingContext2D, showPauseMessage: boolean): void {
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -46,10 +97,10 @@ export function renderPausedFrame(ctx: CanvasRenderingContext2D, showPauseMessag
     ctx.fillStyle = '#fff';
     ctx.font = `bold 40px ${GAME_FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText(t('breakpointHit'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.fillText(t('breakpointHit'), PLAYFIELD_WIDTH / 2, CANVAS_HEIGHT / 2);
     ctx.font = `20px ${GAME_FONT}`;
     ctx.fillStyle = '#cccccc';
-    ctx.fillText(t('pressToContinue'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
+    ctx.fillText(t('pressToContinue'), PLAYFIELD_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
     ctx.textAlign = 'left';
   }
 
@@ -70,7 +121,7 @@ export function renderStartFrame(
     particle.y += particle.speed;
     if (particle.y > CANVAS_HEIGHT) {
       particle.y = -20;
-      particle.x = random() * CANVAS_WIDTH;
+      particle.x = random() * PLAYFIELD_WIDTH;
     }
     ctx.globalAlpha = particle.opacity;
     ctx.fillText(particle.text, particle.x, particle.y);
@@ -97,6 +148,12 @@ export function renderScene({
   let nextShake = shake;
 
   ctx.save();
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.beginPath();
+  ctx.rect(0, 0, PLAYFIELD_WIDTH, CANVAS_HEIGHT);
+  ctx.clip();
+
   if (nextShake > 0) {
     ctx.translate(
       (Math.random() - 0.5) * nextShake,
@@ -105,9 +162,6 @@ export function renderScene({
     nextShake *= Math.pow(0.9, frameScale);
     if (nextShake < 0.5) nextShake = 0;
   }
-
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   ctx.font = `12px ${GAME_FONT}`;
   backgroundParticles.forEach(particle => {
@@ -119,7 +173,7 @@ export function renderScene({
 
   if (stats.combo >= 5) {
     ctx.save();
-    ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.translate(PLAYFIELD_WIDTH / 2, CANVAS_HEIGHT / 2);
     ctx.globalAlpha = 0.05;
     ctx.fillStyle = COLORS.text;
     ctx.font = `bold 120px ${GAME_FONT}`;
@@ -134,7 +188,7 @@ export function renderScene({
   for (let y = 0; y < CANVAS_HEIGHT; y += 40) {
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(CANVAS_WIDTH, y);
+    ctx.lineTo(PLAYFIELD_WIDTH, y);
     ctx.stroke();
   }
 
@@ -177,27 +231,6 @@ export function renderScene({
     ctx.fillRect(-20, 25, 40 * ammoPct, 4);
     ctx.restore();
   }
-
-  const hpPct = Math.max(0, player.hp / player.maxHp);
-  const hpHudX = 12;
-  const hpHudY = 12;
-  const hpBarWidth = 92;
-  ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = 'rgba(30,30,30,0.72)';
-  ctx.fillRect(hpHudX, hpHudY, 148, 18);
-  ctx.strokeStyle = '#3c3c3c';
-  ctx.strokeRect(hpHudX, hpHudY, 148, 18);
-  ctx.fillStyle = '#858585';
-  ctx.font = `10px ${GAME_FONT}`;
-  ctx.fillText(t('hpLabel'), hpHudX + 6, hpHudY + 12);
-  ctx.fillStyle = '#333333';
-  ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth, 8);
-  ctx.fillStyle = hpPct > 0.6 ? COLORS.class : hpPct > 0.3 ? COLORS.warning : COLORS.error;
-  ctx.fillRect(hpHudX + 24, hpHudY + 5, hpBarWidth * hpPct, 8);
-  ctx.fillStyle = '#cccccc';
-  ctx.fillText(`${Math.max(0, Math.ceil(player.hp))}/${player.maxHp}`, hpHudX + 120, hpHudY + 12);
-  ctx.restore();
 
   ctx.font = `20px ${GAME_FONT}`;
   enemyProjectiles.forEach(projectile => {
@@ -259,8 +292,8 @@ export function renderScene({
 
   const monolith = enemies.find(enemy => enemy.type === 'MONOLITH');
   if (monolith) {
-    const barWidth = CANVAS_WIDTH * 0.6;
-    const barX = (CANVAS_WIDTH - barWidth) / 2;
+    const barWidth = PLAYFIELD_WIDTH * 0.6;
+    const barX = (PLAYFIELD_WIDTH - barWidth) / 2;
     const hpRatio = Math.max(0, monolith.hp / monolith.maxHp);
     const isRage = monolith.hp < monolith.maxHp * 0.5;
 
@@ -277,7 +310,7 @@ export function renderScene({
       isRage
         ? t('bossBarPhase2', { wave: stats.wave })
         : t('bossBar', { wave: stats.wave }),
-      CANVAS_WIDTH / 2,
+      PLAYFIELD_WIDTH / 2,
       15,
     );
     ctx.textAlign = 'left';
@@ -285,50 +318,26 @@ export function renderScene({
 
   if (player.invulnerable > 0 && player.invulnerable % 10 > 5) {
     const gradient = ctx.createRadialGradient(
-      CANVAS_WIDTH / 2,
+      PLAYFIELD_WIDTH / 2,
       CANVAS_HEIGHT / 2,
       CANVAS_HEIGHT / 3,
-      CANVAS_WIDTH / 2,
+      PLAYFIELD_WIDTH / 2,
       CANVAS_HEIGHT / 2,
       CANVAS_HEIGHT,
     );
     gradient.addColorStop(0, 'rgba(255,0,0,0)');
     gradient.addColorStop(1, 'rgba(255,0,0,0.3)');
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, PLAYFIELD_WIDTH, CANVAS_HEIGHT);
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.1)';
   for (let y = 0; y < CANVAS_HEIGHT; y += 4) {
-    ctx.fillRect(0, y, CANVAS_WIDTH, 1);
+    ctx.fillRect(0, y, PLAYFIELD_WIDTH, 1);
   }
 
-  const minimapWidth = 60;
-  const minimapScale = 0.08;
-  const minimapX = CANVAS_WIDTH - minimapWidth;
-  ctx.fillStyle = 'rgba(30,30,30,0.8)';
-  ctx.fillRect(minimapX, 0, minimapWidth, CANVAS_HEIGHT);
-  ctx.strokeStyle = '#444';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(minimapX, 0);
-  ctx.lineTo(minimapX, CANVAS_HEIGHT);
-  ctx.stroke();
-
-  enemies.forEach(enemy => {
-    ctx.fillStyle = enemy.type === 'MONOLITH' ? COLORS.error : COLORS.warning;
-    ctx.fillRect(
-      minimapX + enemy.x * minimapScale,
-      enemy.y * minimapScale,
-      Math.max(2, enemy.width * minimapScale),
-      Math.max(2, enemy.height * minimapScale),
-    );
-  });
-  ctx.fillStyle = COLORS.statusBar;
-  ctx.fillRect(minimapX + player.x * minimapScale, player.y * minimapScale, 4, 4);
-  ctx.fillStyle = 'rgba(255,255,255,0.1)';
-  ctx.fillRect(minimapX, 0, minimapWidth, CANVAS_HEIGHT * minimapScale * 3);
-
   ctx.restore();
+  renderHealthHud(ctx, player);
+  renderMinimap(ctx, player, enemies);
   return nextShake;
 }

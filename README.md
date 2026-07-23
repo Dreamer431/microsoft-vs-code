@@ -187,10 +187,12 @@ microsoft-vs-code/
 │   └── TouchControls.tsx   # Mobile touch keycaps
 ├── game/
 │   ├── advanceEntities.ts  # Projectile and transient-entity advancement
+│   ├── canvasViewport.ts   # Responsive high-DPI Canvas sizing
 │   ├── combat.ts           # Collision effects and damage resolution
 │   ├── collision.ts        # Shared collision primitives
 │   ├── contentSelection.ts # Enemy, upgrade, and power-up selection
 │   ├── entityFactory.ts    # Enemy, projectile, and effect construction
+│   ├── minimap.ts          # Full-height world-position telemetry
 │   ├── playerSystem.ts     # Movement, timers, reload, and shooting
 │   ├── progression.ts      # Score, combo, wave, and defeat rewards
 │   ├── refactorUltimate.ts # Refactor ultimate ability
@@ -236,6 +238,8 @@ Coordinates the game runtime:
 - `useGameInput.ts` owns keyboard listener setup, cleanup, and pause handling
 - `entityFactory.ts` creates enemies, bosses, projectiles, power-ups, and effects
 - `advanceEntities.ts` advances projectiles, particles, and floating text
+- `canvasViewport.ts` keeps Canvas text sharp across display pixel densities
+- `minimap.ts` projects the complete playable area into the reserved telemetry rail
 - `combat.ts` resolves contact, projectile damage, pickups, and entity cleanup
 - `playerSystem.ts` owns movement, status timers, ammo, reload, and shooting
 - `progression.ts` owns defeat rewards, combos, boss completion, and upgrade choices

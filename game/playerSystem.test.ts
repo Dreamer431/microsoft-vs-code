@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MAX_SPECIAL_CHARGE } from '../constants';
+import { MAX_SPECIAL_CHARGE, PLAYFIELD_WIDTH } from '../constants';
 import { createInitialGameStats, createInitialPlayer } from '../utils/gameState';
 import { updatePlayerSystem } from './playerSystem';
 
@@ -31,6 +31,16 @@ describe('player system', () => {
     expect(context.player.x).toBe(startX - 9);
     expect(context.player.y).toBe(startY - 9);
     expect(context.player.speedBuff).toBe(9);
+  });
+
+  it('keeps the player out of the reserved minimap rail', () => {
+    const context = createContext();
+    context.player.x = PLAYFIELD_WIDTH - context.player.width;
+    context.keys.add('KeyD');
+
+    updatePlayerSystem(context);
+
+    expect(context.player.x).toBe(PLAYFIELD_WIDTH - context.player.width);
   });
 
   it('fires the projectile pattern and updates ammo statistics', () => {

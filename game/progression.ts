@@ -1,9 +1,9 @@
 import {
   CANVAS_HEIGHT,
-  CANVAS_WIDTH,
   COLORS,
   COMBO_TIMER_MAX,
   MAX_SPECIAL_CHARGE,
+  PLAYFIELD_WIDTH,
   SPECIAL_CHARGE_PER_KILL,
 } from '../constants';
 import type {
@@ -117,7 +117,7 @@ export function resolveEnemyDefeat(
     stats.levelTarget += 5;
     stats.lastLog = t('logBossKilled', { wave: stats.wave - 1 });
     addFloatingText(
-      CANVAS_WIDTH / 2,
+      PLAYFIELD_WIDTH / 2,
       CANVAS_HEIGHT / 2,
       t('deploySuccess'),
       COLORS.class,

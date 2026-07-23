@@ -2,6 +2,8 @@ import type { UpgradeOption } from './types';
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
+export const MINIMAP_WIDTH = 60;
+export const PLAYFIELD_WIDTH = CANVAS_WIDTH - MINIMAP_WIDTH;
 
 export const COLORS = {
   bg: '#1e1e1e',

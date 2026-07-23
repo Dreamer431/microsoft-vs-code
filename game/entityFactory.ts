@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, COLORS, PARTICLE_CHARS } from '../constants';
+import { COLORS, PARTICLE_CHARS, PLAYFIELD_WIDTH } from '../constants';
 import type {
   Enemy,
   FloatingText,
@@ -79,7 +79,7 @@ export function createEnemy(
 
   return {
     id: random().toString(),
-    x: options.x ?? random() * (CANVAS_WIDTH - definition.width),
+    x: options.x ?? random() * (PLAYFIELD_WIDTH - definition.width),
     y: options.y ?? -60,
     width: definition.width,
     height: 24,
@@ -105,7 +105,7 @@ export function createBoss(
 
   return {
     id: `boss-${random()}`,
-    x: CANVAS_WIDTH / 2 - definition.width / 2,
+    x: PLAYFIELD_WIDTH / 2 - definition.width / 2,
     y: -150,
     width: definition.width,
     height: 60,

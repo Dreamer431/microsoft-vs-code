@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CANVAS_WIDTH } from '../constants';
+import { PLAYFIELD_WIDTH } from '../constants';
 import { createInitialPlayer } from '../utils/gameState';
 import {
   createBoss,
@@ -24,11 +24,17 @@ describe('entity factories', () => {
     expect(enemy.vy).toBe(1.7);
   });
 
+  it('spawns random enemies inside the playable area', () => {
+    const enemy = createEnemy('BUG', 1, {}, () => 0.999);
+
+    expect(enemy.x + enemy.width).toBeLessThanOrEqual(PLAYFIELD_WIDTH);
+  });
+
   it('creates a centered boss with boss-specific health scaling', () => {
     const boss = createBoss(2, () => 0.25);
 
     expect(boss.type).toBe('MONOLITH');
-    expect(boss.x).toBe(CANVAS_WIDTH / 2 - boss.width / 2);
+    expect(boss.x).toBe(PLAYFIELD_WIDTH / 2 - boss.width / 2);
     expect(boss.hp).toBe(1200);
     expect(boss.height).toBe(60);
   });

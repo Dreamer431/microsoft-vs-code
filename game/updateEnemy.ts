@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, COLORS } from '../constants';
+import { COLORS, PLAYFIELD_WIDTH } from '../constants';
 import type { Enemy, EnemyProjectile, EnemyType, Player } from '../types';
 import { crossedFrameInterval } from '../utils/gameLogic';
 
@@ -9,6 +9,11 @@ interface EnemyUpdateContext {
   spawnEnemy: (type: EnemyType, x?: number, y?: number) => void;
   createExplosion: (x: number, y: number, color: string, count: number) => void;
   random?: () => number;
+}
+
+function clampEnemyToPlayfield(enemy: Enemy): void {
+  const maxX = Math.max(0, PLAYFIELD_WIDTH - enemy.width);
+  enemy.x = Math.max(0, Math.min(maxX, enemy.x));
 }
 
 export function updateEnemy(enemy: Enemy, context: EnemyUpdateContext): void {
@@ -29,6 +34,7 @@ export function updateEnemy(enemy: Enemy, context: EnemyUpdateContext): void {
   if (enemy.type === 'INFINITE_LOOP') {
     enemy.x += Math.cos(enemy.age * 0.1) * 3 * frameScale;
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
@@ -36,14 +42,16 @@ export function updateEnemy(enemy: Enemy, context: EnemyUpdateContext): void {
     enemy.y += enemy.vy * frameScale;
     if (crossedFrameInterval(previousAge, enemy.age, 60) && random() > 0.5) {
       createExplosion(enemy.x + enemy.width / 2, enemy.y, enemy.color, 3);
-      enemy.x = random() * (CANVAS_WIDTH - enemy.width);
+      enemy.x = random() * (PLAYFIELD_WIDTH - enemy.width);
     }
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
   if (enemy.type === 'MERGE_CONFLICT') {
     enemy.x += Math.sin(enemy.age * 0.05) * frameScale;
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
@@ -54,23 +62,27 @@ export function updateEnemy(enemy: Enemy, context: EnemyUpdateContext): void {
       enemy.x -= 1;
     }
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
   if (enemy.type === 'SPAGHETTI') {
     enemy.x += Math.sin(enemy.age * 0.1) * 2 * frameScale;
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
   if (enemy.type !== 'MONOLITH') {
     enemy.x += enemy.vx * frameScale;
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
   if (enemy.y < 60) {
     enemy.y += enemy.vy * frameScale;
+    clampEnemyToPlayfield(enemy);
     return;
   }
 
@@ -82,7 +94,7 @@ export function updateEnemy(enemy: Enemy, context: EnemyUpdateContext): void {
   const dx = player.x + player.width / 2 - (enemy.x + enemy.width / 2);
   if (dx > 20) enemy.x += moveSpeed * 0.5 * frameScale;
   if (dx < -20) enemy.x -= moveSpeed * 0.5 * frameScale;
-  enemy.x = Math.max(0, Math.min(CANVAS_WIDTH - enemy.width, enemy.x));
+  clampEnemyToPlayfield(enemy);
 
   if (isRage && crossedFrameInterval(previousAge, enemy.age, 10)) {
     enemy.color = enemy.color === COLORS.error ? COLORS.keyword : COLORS.error;

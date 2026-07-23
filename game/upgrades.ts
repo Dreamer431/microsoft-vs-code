@@ -1,4 +1,4 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, COLORS } from '../constants';
+import { CANVAS_HEIGHT, COLORS, PLAYFIELD_WIDTH } from '../constants';
 import type { Player, UpgradeId } from '../types';
 import { t } from '../utils/i18n';
 
@@ -22,7 +22,7 @@ export function applyUpgrade(
   addFloatingText: AddFloatingText,
 ): RunModifiers {
   const nextModifiers = { ...modifiers };
-  const x = CANVAS_WIDTH / 2;
+  const x = PLAYFIELD_WIDTH / 2;
   const y = CANVAS_HEIGHT / 2;
 
   switch (upgrade) {

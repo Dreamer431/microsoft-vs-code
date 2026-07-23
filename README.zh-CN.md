@@ -189,10 +189,12 @@ microsoft-vs-code/
 │   └── TouchControls.tsx   # 移动端触控键帽
 ├── game/
 │   ├── advanceEntities.ts  # 弹丸与短生命周期实体推进
+│   ├── canvasViewport.ts   # 响应式高分屏 Canvas 尺寸
 │   ├── combat.ts           # 碰撞效果与伤害结算
 │   ├── collision.ts        # 通用碰撞检测
 │   ├── contentSelection.ts # 敌人、升级与道具选择
 │   ├── entityFactory.ts    # 敌人、弹丸与特效实体构造
+│   ├── minimap.ts          # 全高世界位置遥测
 │   ├── playerSystem.ts     # 移动、计时、换弹与射击
 │   ├── progression.ts      # 分数、连击、波次与击败奖励
 │   ├── refactorUltimate.ts # 重构终极技能
@@ -238,6 +240,8 @@ microsoft-vs-code/
 - `useGameInput.ts`：负责键盘监听、清理与暂停切换
 - `entityFactory.ts`：创建敌人、Boss、弹丸、道具与特效实体
 - `advanceEntities.ts`：推进弹丸、粒子与浮动文字
+- `canvasViewport.ts`：让 Canvas 文字在不同像素密度下保持清晰
+- `minimap.ts`：将完整可玩区域投影到预留的右侧遥测轨道
 - `combat.ts`：结算接触伤害、弹丸伤害、道具拾取与实体清理
 - `playerSystem.ts`：负责移动、状态计时、弹药、换弹与射击
 - `progression.ts`：负责击败奖励、连击、Boss 通关与升级选项

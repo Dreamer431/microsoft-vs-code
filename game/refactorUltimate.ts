@@ -1,8 +1,8 @@
 import {
   CANVAS_HEIGHT,
-  CANVAS_WIDTH,
   COLORS,
   MAX_SPECIAL_CHARGE,
+  PLAYFIELD_WIDTH,
 } from '../constants';
 import type {
   Enemy,
@@ -68,7 +68,7 @@ export function activateRefactorUltimate({
   });
 
   addFloatingText(
-    CANVAS_WIDTH / 2,
+    PLAYFIELD_WIDTH / 2,
     CANVAS_HEIGHT / 2,
     t('refactorComplete'),
     COLORS.class,

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { GameState, Player, Projectile, Enemy, Particle, GameStats, PowerUp, FloatingText, EnemyProjectile, UpgradeId } from '../types';
-import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, BACKGROUND_STRINGS } from '../constants';
+import { COLORS, CANVAS_WIDTH, CANVAS_HEIGHT, BACKGROUND_STRINGS, PLAYFIELD_WIDTH } from '../constants';
 import { sfxBossAppear } from '../utils/audio';
 import { t } from '../utils/i18n';
 import { FRAME_DURATION, getFrameScale } from '../utils/gameLogic';
@@ -28,6 +28,10 @@ import { updatePlayerSystem } from '../game/playerSystem';
 import { applyUpgrade } from '../game/upgrades';
 import { resolveEnemyDefeat } from '../game/progression';
 import { activateRefactorUltimate } from '../game/refactorUltimate';
+import {
+  prepareGameContext,
+  resizeCanvasToDisplaySize,
+} from '../game/canvasViewport';
 import TouchControls, { TouchControlCode } from './TouchControls';
 
 interface GameEngineProps {
@@ -140,7 +144,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
       enemiesRef.current.push(createBoss(statsRef.current.wave));
       statsRef.current.bossActive = true;
       statsRef.current.lastLog = t('logBoss');
-      addFloatingText(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, t('bossApproaching'), COLORS.error);
+      addFloatingText(PLAYFIELD_WIDTH / 2, CANVAS_HEIGHT / 2, t('bossApproaching'), COLORS.error);
       shakeRef.current = 20;
       sfxBossAppear();
   };
@@ -215,7 +219,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
 
   useEffect(() => {
     bgParticlesRef.current = Array.from({ length: 20 }, () => ({
-      x: Math.random() * CANVAS_WIDTH,
+      x: Math.random() * PLAYFIELD_WIDTH,
       y: Math.random() * CANVAS_HEIGHT,
       text: BACKGROUND_STRINGS[Math.floor(Math.random() * BACKGROUND_STRINGS.length)],
       opacity: Math.random() * 0.1 + 0.02,
@@ -223,9 +227,30 @@ const GameEngine: React.FC<GameEngineProps> = ({
     }));
   }, []);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resize = () => resizeCanvasToDisplaySize(canvas);
+    resize();
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(resize)
+      : null;
+    if (canvas.parentElement) observer?.observe(canvas.parentElement);
+    window.addEventListener('resize', resize);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
   // ── Game Loop ─────────────────────────────────────────────────────────────
   const gameLoop = useCallback((timestamp: number) => {
-    const ctx = canvasRef.current?.getContext('2d');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = prepareGameContext(canvas);
     if (!ctx) return;
 
     // ─ Paused / Upgrade: freeze logic, dim frame, keep rAF alive ─
@@ -260,7 +285,7 @@ const GameEngine: React.FC<GameEngineProps> = ({
         p.y += (p.speed + (player.speedBuff > 0 ? 4 : 0)) * frameScale;
         if (p.y > CANVAS_HEIGHT) {
             p.y = -20;
-            p.x = Math.random() * CANVAS_WIDTH;
+            p.x = Math.random() * PLAYFIELD_WIDTH;
             p.text = BACKGROUND_STRINGS[Math.floor(Math.random() * BACKGROUND_STRINGS.length)];
         }
     });
@@ -382,7 +407,12 @@ const GameEngine: React.FC<GameEngineProps> = ({
         role="img"
         aria-label={t('gameCanvasLabel')}
         className="cursor-none border border-[#333] shadow-2xl shadow-black"
-        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+        style={{
+          width: `${CANVAS_WIDTH}px`,
+          height: `${CANVAS_HEIGHT}px`,
+          maxWidth: '100%',
+          maxHeight: '100%',
+        }}
       />
       {gameState === GameState.PLAYING && (
         <TouchControls onControlChange={handleTouchControl} />

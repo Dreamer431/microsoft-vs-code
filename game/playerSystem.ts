@@ -1,9 +1,9 @@
 import {
   AMMO_REGEN,
   CANVAS_HEIGHT,
-  CANVAS_WIDTH,
   COLORS,
   MAX_SPECIAL_CHARGE,
+  PLAYFIELD_WIDTH,
   PLAYER_BOOST_SPEED,
   PLAYER_SPEED,
   RELOAD_TIME,
@@ -89,7 +89,7 @@ export function updatePlayerSystem({
     player.y += currentSpeed * frameScale;
   }
 
-  player.x = Math.max(0, Math.min(CANVAS_WIDTH - player.width, player.x));
+  player.x = Math.max(0, Math.min(PLAYFIELD_WIDTH - player.width, player.x));
   player.y = Math.max(0, Math.min(CANVAS_HEIGHT - player.height, player.y));
 
   const reloadDuration = fastGc ? RELOAD_TIME * 0.7 : RELOAD_TIME;

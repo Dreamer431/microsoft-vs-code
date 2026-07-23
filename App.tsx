@@ -10,6 +10,15 @@ import vscodeLogo from './vscode.png';
 
 const HIGH_SCORE_KEY = 'VSCODE_GAME_HIGHSCORE';
 
+type EditorDocument = 'GAME' | 'ENEMIES' | 'METADATA';
+type BottomPanel = 'PROBLEMS' | 'TERMINAL' | 'DEBUG' | 'OUTPUT';
+
+const EDITOR_DOCUMENTS: Record<EditorDocument, { label: string; icon: string; color: string }> = {
+  GAME: { label: 'game_loop.ts', icon: 'TS', color: '#cca700' },
+  ENEMIES: { label: 'enemies.json', icon: 'JSON', color: '#e06c75' },
+  METADATA: { label: 'metadata.json', icon: 'JSON', color: '#e06c75' },
+};
+
 const readHighScore = (): number => {
   try {
     return Number(window.localStorage.getItem(HIGH_SCORE_KEY)) || 0;
@@ -87,10 +96,17 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>(GameState.START);
   const [sidebarView, setSidebarView] = useState<SidebarView>('EXPLORER');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [sidebarMenuOpen, setSidebarMenuOpen] = useState(false);
+  const [explorerOpen, setExplorerOpen] = useState(true);
   const [movementSensitivity, setMovementSensitivity] = useState(1);
   const [restartToken, setRestartToken] = useState(0);
   const [stats, setStats] = useState<GameStats>(() => createInitialGameStats());
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [activeDocument, setActiveDocument] = useState<EditorDocument | null>('GAME');
+  const [openDocuments, setOpenDocuments] = useState<EditorDocument[]>(['GAME', 'ENEMIES']);
+  const [activeBottomPanel, setActiveBottomPanel] = useState<BottomPanel>('TERMINAL');
+  const [workbenchNotice, setWorkbenchNotice] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // High score
@@ -162,8 +178,58 @@ export default function App() {
   };
 
   const handleSidebarSelect = (view: SidebarView) => {
+    setSidebarVisible(true);
+    setSidebarMenuOpen(false);
     setMobileSidebarOpen(previous => sidebarView === view ? !previous : true);
     setSidebarView(view);
+  };
+
+  const openDocument = (document: EditorDocument) => {
+    if (document !== 'GAME' && gameState === GameState.PLAYING) {
+      setGameState(GameState.PAUSED);
+      setWorkbenchNotice(t('noticeGamePaused'));
+    } else {
+      setWorkbenchNotice(t('noticeDocumentOpened', { name: EDITOR_DOCUMENTS[document].label }));
+    }
+    setOpenDocuments(previous => previous.includes(document) ? previous : [...previous, document]);
+    setActiveDocument(document);
+    setMobileSidebarOpen(false);
+  };
+
+  const closeDocument = (document: EditorDocument) => {
+    setOpenDocuments(previous => {
+      const next = previous.filter(item => item !== document);
+      if (activeDocument === document) {
+        const previousIndex = previous.indexOf(document);
+        setActiveDocument(next[Math.min(previousIndex, next.length - 1)] ?? null);
+      }
+      return next;
+    });
+    setWorkbenchNotice(t('noticeDocumentClosed', { name: EDITOR_DOCUMENTS[document].label }));
+  };
+
+  const openBottomPanel = (panel: BottomPanel) => {
+    setActiveBottomPanel(panel);
+    const panelNames: Record<BottomPanel, string> = {
+      PROBLEMS: t('termProblems'),
+      TERMINAL: t('termTerminal'),
+      DEBUG: t('termDebug'),
+      OUTPUT: t('termOutput'),
+    };
+    setWorkbenchNotice(t('noticePanelOpened', { name: panelNames[panel] }));
+  };
+
+  const showCurrentPanelInfo = () => {
+    const panelInfo: Record<SidebarView, string> = {
+      EXPLORER: t('panelInfoExplorer'),
+      SEARCH: t('panelInfoSearch'),
+      GIT: t('panelInfoGit'),
+      DEBUG: t('panelInfoDebug'),
+      EXTENSIONS: t('panelInfoExtensions'),
+      SETTINGS: t('panelInfoSettings'),
+    };
+    setWorkbenchNotice(panelInfo[sidebarView]);
+    setSidebarMenuOpen(false);
   };
 
   // ── Sidebar renderers ────────────────────────────────────────────────────
@@ -171,14 +237,39 @@ export default function App() {
   const renderExplorer = () => (
     <>
       <div className="px-2">
-          <div className="flex items-center px-2 py-1 bg-[#37373d] text-white text-xs font-bold cursor-pointer">
-             <span className="mr-2">▼</span> VSCODE-GAME
-          </div>
-          <div className="pl-4 mt-1 text-sm font-mono text-[#569cd6]">
-            <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#cca700] mr-2">TS</span> GameEngine.tsx</div>
-            <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#cca700] mr-2">TS</span> Enemies.ts</div>
-            <div className="py-1 flex items-center hover:bg-[#2a2d2e] cursor-pointer"><span className="text-[#e06c75] mr-2">JSON</span> metadata.json</div>
-          </div>
+          <button
+            type="button"
+            className="flex w-full items-center bg-[#37373d] px-2 py-1 text-left text-xs font-bold text-white hover:bg-[#404047]"
+            aria-expanded={explorerOpen}
+            onClick={() => setExplorerOpen(previous => !previous)}
+          >
+             <span className="mr-2" aria-hidden="true">{explorerOpen ? '▼' : '▶'}</span> VSCODE-GAME
+          </button>
+          {explorerOpen && (
+            <div className="mt-1 pl-4 text-sm font-mono text-[#569cd6]">
+              <button
+                type="button"
+                className="flex w-full items-center py-1 text-left hover:bg-[#2a2d2e]"
+                onClick={() => openDocument('GAME')}
+              >
+                <span className="mr-2 text-[#cca700]">TS</span> GameEngine.tsx
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center py-1 text-left hover:bg-[#2a2d2e]"
+                onClick={() => openDocument('ENEMIES')}
+              >
+                <span className="mr-2 text-[#cca700]">TS</span> Enemies.ts
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center py-1 text-left hover:bg-[#2a2d2e]"
+                onClick={() => openDocument('METADATA')}
+              >
+                <span className="mr-2 text-[#e06c75]">JSON</span> metadata.json
+              </button>
+            </div>
+          )}
 
           <div className="px-4 py-2 mt-6 text-xs font-bold uppercase tracking-wider text-gray-500">{t('runDebugLabel')}</div>
           <div className="pl-4 mt-2 text-xs font-mono space-y-2">
@@ -415,6 +506,170 @@ export default function App() {
     </>
   );
 
+  const renderEditorDocument = () => {
+    if (activeDocument === 'ENEMIES') {
+      return (
+        <div className="h-full overflow-y-auto bg-[#1e1e1e] px-5 py-6 text-sm md:px-10">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-6 border-l-2 border-[#e06c75] pl-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-[#e06c75]">{t('enemyFileEyebrow')}</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">{t('enemyFileTitle')}</h2>
+              <p className="mt-2 max-w-2xl text-xs leading-relaxed text-gray-400">{t('enemyFileDesc')}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {ENEMY_TYPES.map((enemy, index) => (
+                <article key={enemy.type} className="border border-[#3c3c3c] bg-[#252526] p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div>
+                      <span className="mr-2 select-none text-gray-600">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="font-bold" style={{ color: enemy.color }}>{enemy.type}</span>
+                    </div>
+                    <span className="text-lg text-white">{enemy.text}</span>
+                  </div>
+                  <div className="mb-2 font-mono text-[11px] text-[#9cdcfe]">
+                    HP <span className="text-[#b5cea8]">{enemy.hp}</span>
+                    <span className="mx-2 text-gray-600">·</span>
+                    PTS <span className="text-[#b5cea8]">{enemy.score}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-gray-400">{t(enemy.descKey)}</p>
+                </article>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="mt-6 bg-[#0e639c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1177bb]"
+              onClick={() => openDocument('GAME')}
+            >
+              {t('returnToGame')}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeDocument === 'METADATA') {
+      const metadataRows = [
+        [t('metadataVersion'), '3.2.0'],
+        [t('metadataMode'), t('metadataModeValue')],
+        [t('metadataWave'), `v${stats.wave}.0`],
+        [t('metadataScore'), formatNumber(stats.score)],
+        [t('metadataHighScore'), formatNumber(highScore)],
+      ];
+      return (
+        <div className="h-full overflow-y-auto bg-[#1e1e1e] px-5 py-6 text-sm md:px-10">
+          <div className="mx-auto max-w-3xl border border-[#3c3c3c] bg-[#252526]">
+            <div className="border-b border-[#3c3c3c] px-5 py-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-[#ce9178]">{t('metadataEyebrow')}</div>
+              <h2 className="mt-1 text-xl font-semibold text-white">{t('metadataTitle')}</h2>
+              <p className="mt-2 text-xs leading-relaxed text-gray-400">{t('metadataDesc')}</p>
+            </div>
+            <dl className="divide-y divide-[#333333]">
+              {metadataRows.map(([label, value]) => (
+                <div key={label} className="grid grid-cols-[minmax(8rem,0.45fr)_1fr] gap-4 px-5 py-3">
+                  <dt className="text-[#9cdcfe]">"{label}"</dt>
+                  <dd className="break-words text-[#ce9178]">"{value}"</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex flex-wrap gap-2 border-t border-[#3c3c3c] px-5 py-4">
+              <button
+                type="button"
+                className="bg-[#0e639c] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1177bb]"
+                onClick={() => openDocument('GAME')}
+              >
+                {t('returnToGame')}
+              </button>
+              <button
+                type="button"
+                className="border border-[#5a5a5a] px-4 py-2 text-xs font-semibold text-gray-200 hover:border-[#9cdcfe] hover:text-white"
+                onClick={() => handleSidebarSelect('SETTINGS')}
+              >
+                {t('openSettings')}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeDocument === null) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center bg-[#1e1e1e] p-6 text-center">
+          <VscLogo className="mb-5 h-16 w-16 opacity-30" />
+          <h2 className="text-lg font-semibold text-gray-300">{t('emptyEditorTitle')}</h2>
+          <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">{t('emptyEditorDesc')}</p>
+          <button
+            type="button"
+            className="mt-5 border border-[#5a5a5a] px-4 py-2 text-xs text-gray-200 hover:border-[#9cdcfe] hover:text-white"
+            onClick={() => handleSidebarSelect('EXPLORER')}
+          >
+            {t('openExplorer')}
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderBottomPanelContent = () => {
+    const problemCount = Math.max(0, 10 - stats.bugsFixed);
+
+    if (activeBottomPanel === 'PROBLEMS') {
+      return problemCount === 0 ? (
+        <div className="flex h-full items-center px-4 text-[#4ec9b0]">✓ {t('problemsClear')}</div>
+      ) : (
+        <div className="space-y-1 p-2">
+          <div className="flex items-start gap-2 border-b border-[#2d2d2d] px-2 py-1">
+            <span className="text-[#cca700]">⚠</span>
+            <div>
+              <div className="text-gray-200">{t('problemsRemaining', { n: problemCount })}</div>
+              <div className="text-[10px] text-gray-500">game_loop.ts · {t('problemsHint')}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeBottomPanel === 'DEBUG') {
+      return (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-1 p-3 sm:grid-cols-4">
+          <div><span className="text-gray-500">FPS</span><div className="text-[#4ec9b0]">{stats.fps}</div></div>
+          <div><span className="text-gray-500">{t('dbgMaxCombo')}</span><div className="text-[#dcdcaa]">{stats.maxCombo}x</div></div>
+          <div><span className="text-gray-500">{t('extGcHeap')}</span><div className="text-[#9cdcfe]">{Math.round(stats.ammo)}/{stats.maxAmmo}</div></div>
+          <div><span className="text-gray-500">{t('extRefactorCharge')}</span><div className="text-[#c586c0]">{stats.specialCharge}%</div></div>
+        </div>
+      );
+    }
+
+    if (activeBottomPanel === 'OUTPUT') {
+      return (
+        <div className="space-y-1 p-2">
+          <div><span className="text-[#4ec9b0]">[game]</span> {t('outputRuntimeReady')}</div>
+          <div><span className="text-[#569cd6]">[wave]</span> {t('outputWave', { wave: stats.wave })}</div>
+          <div><span className="text-[#dcdcaa]">[stats]</span> {t('outputStats', { score: formatNumber(stats.score), bugs: stats.bugsFixed })}</div>
+          <div><span className="text-[#c586c0]">[input]</span> {t('outputInput')}</div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {terminalLogs.length === 0 && (
+          <div className="mb-1 text-gray-500">{t('terminalIdle')}</div>
+        )}
+        {terminalLogs.map((log, i) => (
+          <div key={`${log}-${i}`} className="mb-0.5">
+            <span className="mr-2 text-green-500">➜</span>
+            <span className="opacity-80">{log}</span>
+          </div>
+        ))}
+        <div ref={logsEndRef} />
+        <div className="mt-1 animate-pulse text-[#007acc]">▍</div>
+      </>
+    );
+  };
+
   return (
     <div className="relative flex h-screen w-screen select-none overflow-hidden font-mono text-[#cccccc]">
       {/* Activity Bar (Left) */}
@@ -439,15 +694,47 @@ export default function App() {
       </div>
 
       {/* Sidebar */}
-      <div className="w-64 bg-[#252526] flex flex-col border-r border-[#1e1e1e] hidden md:flex shrink-0">
-        <div className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-500 flex justify-between items-center">
+      {sidebarVisible && (
+      <div className="relative hidden w-64 shrink-0 flex-col border-r border-[#1e1e1e] bg-[#252526] md:flex">
+        <div className="flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-500">
             <span>{sidebarView}</span>
-            <span className="text-lg leading-3 cursor-pointer hover:text-white">...</span>
+            <button
+              type="button"
+              className="px-1 text-lg leading-3 hover:text-white"
+              aria-label={t('sidebarActions')}
+              aria-expanded={sidebarMenuOpen}
+              onClick={() => setSidebarMenuOpen(previous => !previous)}
+            >
+              ...
+            </button>
         </div>
+        {sidebarMenuOpen && (
+          <div className="absolute right-2 top-9 z-40 min-w-44 border border-[#454545] bg-[#252526] py-1 text-xs font-normal normal-case tracking-normal text-gray-200 shadow-xl">
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left hover:bg-[#094771]"
+              onClick={showCurrentPanelInfo}
+            >
+              {t('describePanel')}
+            </button>
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left hover:bg-[#094771]"
+              onClick={() => {
+                setSidebarVisible(false);
+                setSidebarMenuOpen(false);
+                setWorkbenchNotice(t('noticeSidebarHidden'));
+              }}
+            >
+              {t('closeSidebar')}
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#424242]">
             {renderSidebarContent()}
         </div>
       </div>
+      )}
 
       {/* Small-screen sidebar drawer */}
       {mobileSidebarOpen && (
@@ -481,21 +768,50 @@ export default function App() {
       <div className="flex-1 flex flex-col bg-[#1e1e1e] relative min-w-0">
         {/* Tabs */}
         <div className="h-9 bg-[#252526] flex items-center overflow-x-auto border-b border-[#1e1e1e] shrink-0">
-          <div className="px-4 h-full bg-[#1e1e1e] flex items-center text-sm border-t border-[#007acc] text-white min-w-fit pr-8 relative group">
-            <span className="text-[#cca700] mr-2">TS</span> game_loop.ts <span className="ml-3 text-gray-400 hover:text-white cursor-pointer opacity-0 group-hover:opacity-100">×</span>
-          </div>
-          <div className="px-4 h-full bg-[#2d2d2d] flex items-center text-sm text-gray-400 min-w-fit pr-8 border-r border-[#1e1e1e] hover:bg-[#2a2d2e] cursor-pointer">
-            <span className="text-[#e06c75] mr-2">JSON</span> enemies.json
-          </div>
+          {openDocuments.map(document => {
+            const details = EDITOR_DOCUMENTS[document];
+            const active = activeDocument === document;
+            return (
+              <div
+                key={document}
+                className={`group flex h-full min-w-fit items-center border-r border-[#1e1e1e] text-sm ${
+                  active ? 'border-t border-t-[#007acc] bg-[#1e1e1e] text-white' : 'bg-[#2d2d2d] text-gray-400 hover:bg-[#2a2d2e]'
+                }`}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className="flex h-full items-center py-0 pl-4 pr-2"
+                  onClick={() => openDocument(document)}
+                >
+                  <span className="mr-2" style={{ color: details.color }}>{details.icon}</span>
+                  {details.label}
+                </button>
+                <button
+                  type="button"
+                  className="mr-2 px-1 text-gray-500 opacity-60 hover:bg-[#3c3c3c] hover:text-white group-hover:opacity-100"
+                  aria-label={t('closeDocument', { name: details.label })}
+                  onClick={() => closeDocument(document)}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* Breadcrumbs */}
         <div className="h-6 flex items-center px-4 text-xs text-gray-500 bg-[#1e1e1e] border-b border-[#1e1e1e] shrink-0">
-          src &gt; components &gt; game &gt; <span className="ml-1 text-[#dcdcaa] flex items-center"><span className="text-purple-400 mr-1">def</span> render()</span>
+          {activeDocument === 'GAME' && <>src &gt; components &gt; game &gt; <span className="ml-1 flex items-center text-[#dcdcaa]"><span className="mr-1 text-purple-400">def</span> render()</span></>}
+          {activeDocument === 'ENEMIES' && <>src &gt; data &gt; <span className="ml-1 text-[#e06c75]">enemies.json</span></>}
+          {activeDocument === 'METADATA' && <>project &gt; <span className="ml-1 text-[#e06c75]">metadata.json</span></>}
+          {activeDocument === null && <span>{t('noOpenEditors')}</span>}
         </div>
 
         {/* Game Canvas Container */}
-        <div className="flex-1 relative flex justify-center items-center bg-[#1e1e1e] overflow-hidden min-h-0">
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-[#1e1e1e]">
+          <div className={`absolute inset-0 items-center justify-center ${activeDocument === 'GAME' ? 'flex' : 'hidden'}`}>
             <GameEngine
               gameState={gameState}
               setGameState={setGameState}
@@ -628,58 +944,107 @@ export default function App() {
                  </div>
 
                  <p className="mt-6 text-gray-600 text-xs font-mono">{t('clickToConfirm')}</p>
-              </div>
-            )}
+               </div>
+             )}
+          </div>
+          {activeDocument !== 'GAME' && renderEditorDocument()}
         </div>
 
         {/* Terminal / Bottom Panel */}
         <div className="hidden h-40 shrink-0 flex-col border-t border-[#414141] bg-[#1e1e1e] md:flex">
           <div className="flex text-xs px-4 py-2 border-b border-[#414141] bg-[#1e1e1e]">
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termProblems')} <span className="bg-[#252526] rounded-full px-2 py-0.5 text-[10px] ml-1">{Math.max(0, 10 - stats.bugsFixed)}</span></span>
-            <span className="mr-6 cursor-pointer hover:text-white text-[#007acc] border-b border-[#007acc] pb-2 -mb-2 uppercase text-[10px] tracking-wide">{t('termTerminal')}</span>
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termDebug')}</span>
-            <span className="mr-6 cursor-pointer hover:text-white uppercase text-[10px] tracking-wide">{t('termOutput')}</span>
+            {([
+              ['PROBLEMS', t('termProblems')],
+              ['TERMINAL', t('termTerminal')],
+              ['DEBUG', t('termDebug')],
+              ['OUTPUT', t('termOutput')],
+            ] as const).map(([panel, label]) => (
+              <button
+                type="button"
+                key={panel}
+                className={`mr-6 -mb-2 pb-2 text-[10px] uppercase tracking-wide hover:text-white ${
+                  activeBottomPanel === panel ? 'border-b border-[#007acc] text-[#007acc]' : 'text-gray-400'
+                }`}
+                onClick={() => openBottomPanel(panel)}
+              >
+                {label}
+                {panel === 'PROBLEMS' && (
+                  <span className="ml-1 rounded-full bg-[#252526] px-2 py-0.5 text-[10px]">{Math.max(0, 10 - stats.bugsFixed)}</span>
+                )}
+              </button>
+            ))}
           </div>
           <div className="flex-1 p-2 font-mono text-xs overflow-y-auto text-gray-300 scrollbar-thin scrollbar-thumb-gray-700">
-             {terminalLogs.map((log, i) => (
-                 <div key={i} className="mb-0.5">
-                     <span className="text-green-500 mr-2">➜</span>
-                     <span className="opacity-80">{log}</span>
-                 </div>
-             ))}
-             <div ref={logsEndRef} />
-             <div className="mt-1 animate-pulse text-[#007acc]">▍</div>
+             {renderBottomPanelContent()}
           </div>
         </div>
       </div>
 
+      {workbenchNotice && (
+        <div
+          className="absolute bottom-9 right-3 z-[90] w-[min(22rem,calc(100vw-4rem))] border border-[#007acc] bg-[#252526] p-3 text-xs text-gray-200 shadow-2xl"
+          role="status"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 font-semibold text-[#9cdcfe]">{t('noticeTitle')}</div>
+              <p className="leading-relaxed text-gray-300">{workbenchNotice}</p>
+            </div>
+            <button
+              type="button"
+              className="px-1 text-lg leading-none text-gray-500 hover:text-white"
+              aria-label={t('dismissNotice')}
+              onClick={() => setWorkbenchNotice(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Status Bar */}
       <div className="absolute bottom-0 left-0 right-0 h-6 bg-[#007acc] text-white flex items-center text-xs px-3 justify-between z-50 cursor-default">
         <div className="flex items-center gap-4">
-          <span className="flex items-center hover:bg-white/20 px-1 rounded"><span className="mr-1">⊗</span> 0</span>
-          <span className="flex items-center hover:bg-white/20 px-1 rounded"><span className="mr-1">⚠</span> 0</span>
-          <span className="hover:bg-white/20 px-1 rounded flex items-center"><span className="mr-1 text-[10px]"></span> main*</span>
+          <button type="button" className="flex items-center rounded px-1 hover:bg-white/20" title={t('statusErrors')} onClick={() => openBottomPanel('PROBLEMS')}><span className="mr-1">⊗</span> 0</button>
+          <button type="button" className="flex items-center rounded px-1 hover:bg-white/20" title={t('statusWarnings')} onClick={() => openBottomPanel('PROBLEMS')}><span className="mr-1">⚠</span> {Math.max(0, 10 - stats.bugsFixed)}</button>
+          <button type="button" className="flex items-center rounded px-1 hover:bg-white/20" title={t('statusBranch')} onClick={() => handleSidebarSelect('GIT')}>main*</button>
         </div>
         <div className="flex items-center gap-4">
-          <span className="hidden rounded px-1 hover:bg-white/20 sm:inline">Ln {stats.linesOfCode}, Col {stats.bugsFixed}</span>
-          <span className="hidden rounded px-1 hover:bg-white/20 lg:inline">Move {formatSensitivity(movementSensitivity)}</span>
-          <span className="hidden rounded px-1 hover:bg-white/20 lg:inline">Heap: 100MB</span>
-          <span className="hidden rounded px-1 hover:bg-white/20 sm:inline">UTF-8</span>
-          <span className="hover:bg-white/20 px-1 rounded">{stats.fps} FPS</span>
-          <span
-            className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
+          <button
+            type="button"
+            className="hidden rounded px-1 hover:bg-white/20 sm:inline"
+            title={t('statusPosition')}
+            onClick={() => setWorkbenchNotice(t('noticePosition', { lines: stats.linesOfCode, bugs: stats.bugsFixed }))}
+          >
+            Ln {stats.linesOfCode}, Col {stats.bugsFixed}
+          </button>
+          <button type="button" className="hidden rounded px-1 hover:bg-white/20 lg:inline" title={t('statusMovement')} onClick={() => handleSidebarSelect('SETTINGS')}>Move {formatSensitivity(movementSensitivity)}</button>
+          <button type="button" className="hidden rounded px-1 hover:bg-white/20 lg:inline" title={t('statusHeap')} onClick={() => handleSidebarSelect('DEBUG')}>Heap: {Math.min(99, 50 + stats.wave * 3 + stats.bugsFixed % 20)}MB</button>
+          <button
+            type="button"
+            className="hidden rounded px-1 hover:bg-white/20 sm:inline"
+            title={t('statusEncoding')}
+            onClick={() => setWorkbenchNotice(t('noticeEncoding'))}
+          >
+            UTF-8
+          </button>
+          <button type="button" className="rounded px-1 hover:bg-white/20" title={t('statusFps')} onClick={() => openBottomPanel('DEBUG')}>{stats.fps} FPS</button>
+          <button
+            type="button"
+            className="flex items-center px-1 hover:bg-white/20"
             onClick={() => handleSidebarSelect('SETTINGS')}
             title={t('statusLang')}
           >
-             <span>🌐 {lang.toUpperCase()}</span>
-          </span>
-          <span
-            className="flex items-center hover:bg-white/20 px-1 cursor-pointer"
+             🌐 {lang.toUpperCase()}
+          </button>
+          <button
+            type="button"
+            className="flex items-center px-1 hover:bg-white/20"
             onClick={handleSoundToggle}
             title={soundMuted ? t('statusUnmute') : t('statusMute')}
           >
-             <span className="mr-1">{soundMuted ? '🔇' : '🔔'}</span>
-          </span>
+             <span className="mr-1" aria-hidden="true">{soundMuted ? '🔇' : '🔔'}</span>
+          </button>
         </div>
       </div>
     </div>

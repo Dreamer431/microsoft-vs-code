@@ -1,10 +1,10 @@
-import { COLORS, CANVAS_HEIGHT, CANVAS_WIDTH, MAX_AMMO } from '../constants';
+import { COLORS, CANVAS_HEIGHT, MAX_AMMO, PLAYFIELD_WIDTH } from '../constants';
 import type { GameStats, Player } from '../types';
 
 export function createInitialPlayer(): Player {
   return {
     id: 'player',
-    x: CANVAS_WIDTH / 2,
+    x: PLAYFIELD_WIDTH / 2,
     y: CANVAS_HEIGHT - 60,
     width: 40,
     height: 40,
